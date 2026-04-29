@@ -59,3 +59,99 @@ UXデザイン
     - コメントの投稿
 - レビュー
 - リファクタリング
+
+### チェックリスト
+
+開発手順のチェックリストです。この手順は仮のもので、実装時に必要に応じて調整してください。
+
+- [ ] 方針ドキュメントの作成
+    - [ ] プロジェクト概要・目的を記載
+    - [ ] 技術スタック・実装方針・テスト方針を記載
+    - [ ] ドキュメント運用ルールを記載
+- [ ] 開発環境の準備
+    - [ ] Gitをインストールし、バージョン確認
+    - [ ] パッケージマネージャー（winget/scoop）をインストール
+    - [ ] Ruby（RubyInstaller + Devkit）をインストールし、バージョン確認
+    - [ ] Node.jsをインストールし、バージョン確認
+    - [ ] Yarnをインストールし、バージョン確認
+    - [ ] PostgreSQLをインストールし、バージョン確認
+    - [ ] Railsをインストールし、バージョン確認
+- [ ] リポジトリの設定
+    - [ ] Gitリポジトリを初期化
+    - [ ] .gitignoreを作成
+    - [ ] フォルダ構成を決定
+    - [ ] Rails新規プロジェクトを作成
+    - [ ] 必要なGemを追加
+- [ ] 機能実装
+    - [ ] ユーザー認証
+        - [ ] 認証Gem（例: Devise）の導入
+        - [ ] ユーザーモデルの作成
+        - [ ] サインアップ・ログイン・ログアウト機能
+        - [ ] 認証テストの作成
+    - [ ] 記事の投稿
+        - [ ] Articleモデル・マイグレーション作成
+        - [ ] 記事投稿フォームの実装
+        - [ ] 記事一覧・詳細ページの作成
+        - [ ] 投稿・表示のテスト
+    - [ ] 読者への記事の公開
+        - [ ] 公開/非公開フラグの設計・実装
+        - [ ] 公開記事のみ表示するロジック
+        - [ ] 公開範囲のテスト
+    - [ ] コメントの投稿
+        - [ ] Commentモデル・マイグレーション作成
+        - [ ] コメント投稿フォームの実装
+        - [ ] 記事詳細ページへのコメント表示
+        - [ ] コメント機能のテスト
+- [ ] レビュー
+    - [ ] コードレビュー（自己/AI/他者）
+    - [ ] テスト実行・動作確認
+- [ ] リファクタリング
+    - [ ] コードの整理・改善
+    - [ ] 不要なコードやコメントの削除
+
+### 開発環境の準備
+
+1. **Gitのインストール**  
+    https://git-scm.com/download/win  
+    インストール後、`git --version`で確認
+
+2. **パッケージマネージャー（winget または scoop）**  
+    - [winget](https://learn.microsoft.com/ja-jp/windows/package-manager/winget/)（Windows 10以降は標準搭載）
+    - [scoop](https://scoop.sh/)（コマンドで簡単にインストール可能）
+
+3. **Ruby（RubyInstaller + Devkit）**  
+    https://rubyinstaller.org/  
+    Ruby+Devkit版を選択し、インストール時にMSYS2/Devkitセットアップも実行  
+    `ruby -v`と`gem -v`で確認
+
+4. **Node.jsのインストール**  
+    https://nodejs.org/ja/download/  
+    LTS版推奨  
+    `node -v`と`npm -v`で確認
+
+5. **Yarnのインストール**  
+    `npm install --global yarn`  
+    `yarn -v`で確認
+
+6. **PostgreSQLのインストール**  
+    https://www.postgresql.org/download/windows/  
+    `psql --version`で確認
+
+7. **Railsのインストール**  
+    `gem install rails -v 8.0.0`  
+    `rails -v`で確認
+
+8. **プロジェクト作成例**  
+    `rails new ruby-blog -d postgresql`  
+    `cd ruby-blog`
+
+9. **データベース設定**  
+    `config/database.yml`を編集（必要に応じてユーザー名・パスワードを設定）  
+    `rails db:create` でDB作成
+
+10. **動作確認**  
+     `rails server` で http://localhost:3000 にアクセス
+
+11. **RSpec導入**  
+     `bundle add rspec-rails --group "development,test"`  
+     `rails generate rspec:install`
