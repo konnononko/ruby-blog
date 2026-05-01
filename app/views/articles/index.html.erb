@@ -1,0 +1,19 @@
+<% content_for :title, "Articles — Ruby Blog" %>
+
+<h1>Articles</h1>
+
+<% if user_signed_in? %>
+  <p><%= link_to "New article", new_article_path %></p>
+<% end %>
+
+<% if @articles.any? %>
+  <ul>
+    <% @articles.each do |article| %>
+      <li>
+        <%= link_to article.title, article %>
+      </li>
+    <% end %>
+  </ul>
+<% else %>
+  <p>No articles yet.</p>
+<% end %>

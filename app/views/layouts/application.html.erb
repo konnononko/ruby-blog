@@ -25,6 +25,7 @@
 
   <body>
     <nav>
+      <%= link_to "Articles", articles_path %>
       <% if user_signed_in? %>
         <%= button_to "Log out", destroy_user_session_path, method: :delete %>
       <% else %>

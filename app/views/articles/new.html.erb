@@ -1,0 +1,7 @@
+<% content_for :title, "New article — Ruby Blog" %>
+
+<h1>New article</h1>
+
+<%= render "form", article: @article %>
+
+<p><%= link_to "Back to articles", articles_path %></p>
