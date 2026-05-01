@@ -202,8 +202,8 @@ UXデザイン
 
 1. Article のモデルとマイグレーションを用意する
     - 例: `title`、`body`（本文）、`user_id`（外部キー）
-    - ジェネレータ例: `bundle exec rails generate scaffold Article title:string body:text user:references`  
-      （scaffold 以外の作り方でもよい。まずはCRUDを一気に作るなら便利）
+    - モデルだけ先に作る例: `bundle exec rails generate model Article title:string body:text user:references`
+    - CRUDのひな形まで一気に作る例: `bundle exec rails generate scaffold Article title:string body:text user:references`
 
 2. `User` モデルに `has_many :articles` を追加する（必要なら `dependent` も検討）
 
