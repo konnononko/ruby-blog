@@ -82,6 +82,7 @@ UXデザイン
     - [x] フォルダ構成を決定
     - [x] Rails新規プロジェクトを作成
     - [x] 必要なGemを追加
+- [x] 最初のRSpec smoke test
 - [ ] 機能実装
     - [ ] ユーザー認証
         - [ ] 認証Gem（例: Devise）の導入
@@ -111,47 +112,77 @@ UXデザイン
 
 ### 開発環境の準備
 
-1. **Gitのインストール**  
+1. Gitのインストール  
     https://git-scm.com/download/win  
     インストール後、`git --version`で確認
 
-2. **パッケージマネージャー（winget または scoop）**  
+2. パッケージマネージャー（winget または scoop）  
     - [winget](https://learn.microsoft.com/ja-jp/windows/package-manager/winget/)（Windows 10以降は標準搭載）
     - [scoop](https://scoop.sh/)（コマンドで簡単にインストール可能）
 
-3. **Ruby（RubyInstaller + Devkit）**  
+3. Ruby（RubyInstaller + Devkit）  
     https://rubyinstaller.org/  
     Ruby+Devkit版を選択し、インストール時にMSYS2/Devkitセットアップも実行  
     `ruby -v`と`gem -v`で確認
 
-4. **Node.jsのインストール**  
+4. Node.jsのインストール  
     https://nodejs.org/ja/download/  
     LTS版推奨  
     `node -v`と`npm -v`で確認
 
-5. **Yarnのインストール**  
+5. Yarnのインストール  
     `npm install --global yarn`  
     `yarn -v`で確認
 
-6. **PostgreSQLのインストール**  
+6. PostgreSQLのインストール  
     https://www.postgresql.org/download/windows/  
     `psql --version`で確認
 
-7. **Railsのインストール**  
+7. Railsのインストール  
     `gem install rails -v 8.0.0`  
     `rails -v`で確認
 
-8. **プロジェクト作成例**  
+8. プロジェクト作成例  
     `rails new ruby-blog -d postgresql`  
     `cd ruby-blog`
 
-9. **データベース設定**  
+9. データベース設定  
     `config/database.yml`を編集（必要に応じてユーザー名・パスワードを設定）  
     `rails db:create` でDB作成
 
-10. **動作確認**  
+10. 動作確認  
      `rails server` で http://localhost:3000 にアクセス
 
-11. **RSpec導入**  
+11. RSpec導入  
      `bundle add rspec-rails --group "development,test"`  
      `rails generate rspec:install`
+
+## ユーザー認証（Devise）導入手順（最小）
+
+前提:
+- 認証は Devise を使用する
+- モデル名は User
+- 必須項目は email + password
+
+手順:
+
+1. Devise追加
+    - `bundle add devise`
+    - `bundle install`
+
+2. Devise初期化
+    - `bundle exec rails generate devise:install`
+
+3. Userモデル作成（Devise）
+    - `bundle exec rails generate devise User`
+
+4. DB反映
+    - `bundle exec rails db:migrate`
+    - `RAILS_ENV=test bundle exec rails db:prepare`
+
+5. 動作確認（最小）
+    - `bundle exec rails server`
+    - サインイン画面にアクセス（例: `/users/sign_in`）
+
+6. テスト（最小）
+    - `bundle exec rspec`
