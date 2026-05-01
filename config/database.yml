@@ -23,6 +23,10 @@ default: &default
 development:
   <<: *default
   database: ruby_blog_development
+  username: ruby_blog
+  password: <%= ENV["RUBY_BLOG_DATABASE_PASSWORD"] %>
+  host: localhost
+  port: 5432
 
   # The specified database role being used to connect to PostgreSQL.
   # To create additional roles in PostgreSQL see `$ createuser --help`.
