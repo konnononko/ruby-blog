@@ -23,3 +23,13 @@
   - `.env` は **git管理しない**（リポジトリに含めない）
   - 必要なら `.env.example` のような **秘匿なし**テンプレを置く
 
+## RSpec: 最初のスモークテスト追加（Rails起動 / DB接続）
+- **目的**: 機能実装が無い段階でも「プロジェクト/ライブラリ/DB設定が成立している」ことを自動で確かめられるようにする。
+- **前提**: `rails db:prepare` を **test環境**に対して実行済み。
+- **追加したspec**:
+  - `spec/smoke/boot_spec.rb`（Railsがbootできること）
+  - `spec/smoke/database_spec.rb`（DB接続が確立でき、`SELECT 1` が通ること）
+- **実行コマンド**: `bundle exec rspec`
+- **結果**: `3 examples, 0 failures`
+  - 補足: `VIPS-WARNING` が出たが、テストは成功（image_processing/libvips の追加モジュール不足に関する警告と思われる）
+
