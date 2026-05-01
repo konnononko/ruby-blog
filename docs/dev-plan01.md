@@ -191,3 +191,40 @@ UXデザイン
 
 - 最小ログインログアウト画面遷移のナビをレイアウトに追加
 - 最小モデルとリクエストのテストを追加
+
+## 記事の投稿（Article）実装手順（概要）
+
+前提:
+- 記事は User に紐づく（`Article` は `User` に `belongs_to`、User 側は `has_many`）
+- 投稿・編集・削除はログイン必須とする（一覧・詳細の公開範囲は別ステップで調整してよい）
+
+手順:
+
+1. Article のモデルとマイグレーションを用意する
+    - 例: `title`、`body`（本文）、`user_id`（外部キー）
+    - ジェネレータ例: `bundle exec rails generate scaffold Article title:string body:text user:references`  
+      （scaffold 以外の作り方でもよい。まずはCRUDを一気に作るなら便利）
+
+2. `User` モデルに `has_many :articles` を追加する（必要なら `dependent` も検討）
+
+3. DBを反映する
+    - `bundle exec rails db:migrate`
+    - `RAILS_ENV=test bundle exec rails db:prepare`
+
+4. ルーティングを整える
+    - 例: `resources :articles`（必要に応じて `only` / `except` で絞る）
+
+5. コントローラで認可と Strong Parameters を入れる
+    - `before_action :authenticate_user!`（新規・作成・編集・更新・削除など、要件に合わせて適用）
+    - `article_params` で許可するカラムを限定する（`user_id` はフォームから渡させず、サーバ側で `current_user` から紐づけるのが安全）
+
+6. 画面を確認する
+    - `bundle exec rails server` で一覧・詳細・投稿フォームが動くこと
+
+7. テスト（最小）
+    - モデル: 必須カラムのバリデーションなど
+    - リクエスト: 未ログインで書き込み系にアクセスできないこと、など
+
+補足:
+
+- 「読者への公開」や下書きは、別途カラム（例: `published` や `published_at`）を足してからでもよい
