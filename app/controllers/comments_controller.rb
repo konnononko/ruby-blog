@@ -16,7 +16,7 @@ class CommentsController < ApplicationController
   def destroy
     @comment = @article.comments.find(params[:id])
 
-    unless comment_destroy_allowed?
+    unless @comment.deletable_by?(current_user)
       redirect_to @article, alert: "You are not allowed to delete this comment."
       return
     end
@@ -33,9 +33,5 @@ class CommentsController < ApplicationController
 
   def comment_params
     params.require(:comment).permit(:body)
-  end
-
-  def comment_destroy_allowed?
-    @comment.user_id == current_user.id || @article.user_id == current_user.id
   end
 end

@@ -48,7 +48,7 @@ class ArticlesController < ApplicationController
   end
 
   def authorize_owner!
-    return if @article.user_id == current_user.id
+    return if @article.editable_by?(current_user)
 
     redirect_to articles_path, alert: "You are not allowed to modify this article."
   end

@@ -8,7 +8,7 @@
     <%= simple_format(@article.body) %>
   </div>
 
-  <% if user_signed_in? && @article.user_id == current_user.id %>
+  <% if @article.editable_by?(current_user) %>
     <div class="toolbar">
       <%= link_to "Edit article", edit_article_path(@article), class: "btn btn--ghost btn--small" %>
       <%= button_to "Delete article", article_path(@article), method: :delete, class: "btn btn--danger btn--small", form: { data: { turbo_confirm: "Are you sure?" } } %>
@@ -23,7 +23,7 @@
     <div class="comment-card">
       <div class="article-body"><%= simple_format(comment.body) %></div>
       <p class="meta"><%= comment.user.email %> · <%= l(comment.created_at, format: :short) %></p>
-      <% if user_signed_in? && (comment.user_id == current_user.id || @article.user_id == current_user.id) %>
+      <% if comment.deletable_by?(current_user) %>
         <%= button_to "Delete comment", article_comment_path(@article, comment), method: :delete, class: "btn btn--danger btn--small", form: { data: { turbo_confirm: "Delete this comment?" } } %>
       <% end %>
     </div>
