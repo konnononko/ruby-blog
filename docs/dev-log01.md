@@ -82,3 +82,9 @@
 - テスト: `article_spec` に `editable_by?`、`comment_spec` に `deletable_by?` とモデル前提の整理（作者・投稿者・他人）。`articles_spec` に非所有者の `GET edit` / `PATCH` / `DELETE` を追加（DELETE の example は `change(Article, :count)` のため、事前に記事を作成してからリクエストするよう調整）。
 - 確認: `bundle exec rspec` が通過（実施時点で 27 examples, 0 failures）。
 
+## VIPS 警告（Windows / `bundle exec rspec` 時）
+
+`image_processing`（Active Storage 用）の依存で libvips が読み込まれると、Windows（RubyInstaller + MSYS2 配下）では `vips-heif.dll` などオプション用 DLL が見つからない旨の `VIPS-WARNING` が出ることがある。テストは成功し、ブログの現仕様では画像バリアントや添付をまだ使っていない。
+
+方針: 当該警告は主に Windows ローカル環境に現れるものとして、現時点では画像モジュールを実運用していないため対応は不要とし、無視してよい。CI が Linux の場合は同様のメッセージが出ないことが多い。画像機能を本格利用する段階で、必要なら MSYS2 側のパッケージや環境を見直す。
+
