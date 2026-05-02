@@ -87,4 +87,10 @@ Rails.application.configure do
   #
   # Skip DNS rebinding protection for the default health check endpoint.
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+
+  # Local Docker Compose verification only (see compose.yaml); keep false in real production.
+  if ActiveModel::Type::Boolean.new.cast(ENV.fetch("ALLOW_LOCALHOST_IN_PRODUCTION", "false"))
+    config.hosts << "localhost"
+    config.hosts << "127.0.0.1"
+  end
 end

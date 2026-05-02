@@ -95,6 +95,7 @@ test:
 production:
   primary: &primary_production
     <<: *default
+    host: <%= ENV.fetch("DB_HOST", "localhost") %>
     database: ruby_blog_production
     username: ruby_blog
     password: <%= ENV["RUBY_BLOG_DATABASE_PASSWORD"] %>

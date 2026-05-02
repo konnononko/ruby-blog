@@ -1,0 +1,40 @@
+# Local verification only: PostgreSQL + Rails (production image). Not for Kamal/production deploy.
+# Usage: copy .env.docker.example to .env.docker, set RAILS_MASTER_KEY, then: docker compose up --build
+# App: http://localhost:3000  (container listens on 80 via Thruster)
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ruby_blog
+      POSTGRES_PASSWORD: ruby_blog
+      POSTGRES_DB: ruby_blog_production
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ruby_blog -d ruby_blog_production"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    env_file:
+      - .env.docker
+    environment:
+      DB_HOST: db
+      RUBY_BLOG_DATABASE_PASSWORD: ruby_blog
+      RAILS_ENV: production
+      ALLOW_LOCALHOST_IN_PRODUCTION: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

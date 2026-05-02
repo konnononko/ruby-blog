@@ -44,6 +44,21 @@ RAILS_ENV=test bundle exec rails db:prepare
 bundle exec rspec
 ```
 
+## Docker Compose（ローカル検証のみ）
+
+本番デプロイ（Kamal）の代替ではなく、手元で Postgres 付きのコンテナを一度に試すためのものです。
+
+前提: Docker と Docker Compose が使えること。
+
+1. `cp .env.docker.example .env.docker`（Windows PowerShell では `Copy-Item .env.docker.example .env.docker`）
+2. `config/master.key` の内容を 1 行そのまま `.env.docker` の `RAILS_MASTER_KEY=` に貼り付ける（コミットしない）
+3. `docker compose up --build`
+4. ブラウザで http://localhost:3000 を開く（コンテナ内はポート 80、ホストへは 3000 で公開）
+
+DB のユーザー・パスワードは Compose 内で `ruby_blog` / `ruby_blog` に固定している（ローカル検証用）。`.env` で開発しているホストの PostgreSQLとは別ボリュームなので競合しにくい。
+
+トラブル時: ビルドが失敗する場合は `Dockerfile` とログを確認する。画面が表示されない場合は `docker compose logs web` で Rails のログを見る。
+
 ## ドキュメント運用
 - 開発方針/計画: `docs/dev-planNN.md`
 - 作業ログ/備忘録: `docs/dev-logNN.md`
