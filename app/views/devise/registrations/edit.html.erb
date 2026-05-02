@@ -1,0 +1,51 @@
+<% content_for :title, "Edit account — Ruby Blog" %>
+
+<h1 class="page-title">Edit <%= resource_name.to_s.humanize %></h1>
+
+<div class="panel glass">
+  <%= form_for(resource, as: resource_name, url: registration_path(resource_name), html: { method: :put }) do |f| %>
+    <%= render "devise/shared/error_messages", resource: resource %>
+
+    <div class="field">
+      <%= f.label :email %>
+      <%= f.email_field :email, autofocus: true, autocomplete: "email" %>
+    </div>
+
+    <% if devise_mapping.confirmable? && resource.pending_reconfirmation? %>
+      <p class="field-hint">Currently waiting confirmation for: <%= resource.unconfirmed_email %></p>
+    <% end %>
+
+    <div class="field">
+      <%= f.label :password %>
+      <span class="field-hint">Leave blank if you don’t want to change it.</span>
+      <%= f.password_field :password, autocomplete: "new-password" %>
+      <% if @minimum_password_length %>
+        <p class="field-hint"><%= @minimum_password_length %> characters minimum</p>
+      <% end %>
+    </div>
+
+    <div class="field">
+      <%= f.label :password_confirmation %>
+      <%= f.password_field :password_confirmation, autocomplete: "new-password" %>
+    </div>
+
+    <div class="field">
+      <%= f.label :current_password %>
+      <span class="field-hint">We need your current password to confirm your changes.</span>
+      <%= f.password_field :current_password, autocomplete: "current-password" %>
+    </div>
+
+    <div class="form-actions">
+      <%= f.submit "Update", class: "btn btn--primary" %>
+    </div>
+  <% end %>
+</div>
+
+<h2 class="section-title">Cancel my account</h2>
+
+<div class="panel glass panel--tight">
+  <p class="meta">Unhappy with the service?</p>
+  <%= button_to "Cancel my account", registration_path(resource_name), class: "btn btn--danger", form: { data: { turbo_confirm: "Are you sure?" } }, method: :delete %>
+</div>
+
+<p class="meta"><%= link_to "Back", :back, class: "link-muted" %></p>
