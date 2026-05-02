@@ -88,3 +88,14 @@
 
 方針: 当該警告は主に Windows ローカル環境に現れるものとして、現時点では画像モジュールを実運用していないため対応は不要とし、無視してよい。CI が Linux の場合は同様のメッセージが出ないことが多い。画像機能を本格利用する段階で、必要なら MSYS2 側のパッケージや環境を見直す。
 
+## CI（GitHub Actions）
+
+`dev-plan01.md` の「CI で RSpec を実行する」に沿って `.github/workflows/ci.yml` を整備した。
+
+- トリガー: `pull_request`、`push` はブランチ `main`（従来の `master` から変更）、手動は `workflow_dispatch`。
+- テストジョブ: `bundle exec rails db:test:prepare` のあと `bundle exec rspec`。Minitest の `test` / `test:system` は使わない。`spec/system` が無いため `system-test` ジョブは削除した。
+- CI 上では `bin/*` を直接実行しない。Linux ランナーで実行ビットが無い・shebang が `ruby.exe` の binstub があるため、`bundle exec` で各 gem を起動する形に統一（Brakeman、bundle-audit、RuboCop、`rails`）。
+- `bundle exec importmap` は Bundler が `importmap` コマンドとして解決しないため、`bundle exec ruby bin/importmap audit` に変更した。
+- Lint: RuboCop 違反は `bundle exec rubocop -A` で自動修正し、`Gemfile`、`config/initializers/devise.rb`、`pages_controller`、一部 spec の末尾空行などを整えた。
+- README 冒頭に GitHub Actions の CI バッジ（ワークフロー `ci.yml`）を追加した。
+- GitHub Actions で CI 成功を確認済み。
