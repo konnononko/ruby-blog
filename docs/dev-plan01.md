@@ -225,3 +225,40 @@ UXデザイン
 
 - 「読者への公開」や下書きは、別途カラム（例: `published` や `published_at`）を足してからでもよい
 - 検討の結果、MVPとしては公開フラグ/下書きなし、投稿したものは未ログインユーザー含め全員に公開
+
+## コメントの投稿（Comment）実装手順（概要）
+
+前提:
+- コメントはログインユーザーのみが作成・削除できる（未ログインはコメント不可）
+- Comment は Article と User に紐づく（`belongs_to :article`、`belongs_to :user`）
+
+手順:
+
+1. Comment のモデルとマイグレーションを用意する
+    - 例: `body`（本文）、`article_id`、`user_id`（いずれも外部キー、`body` は text が無難）
+    - ジェネレータ例: `bundle exec rails generate model Comment body:text article:references user:references`
+
+2. `Article` に `has_many :comments` を、`User` に `has_many :comments` を追加する（`dependent` は要件に応じて）
+
+3. DBを反映する
+    - `bundle exec rails db:migrate`
+    - `RAILS_ENV=test bundle exec rails db:prepare`
+
+4. ルーティングを整える
+    - 例: `resources :articles` の内側に `resources :comments, only: [:create, :destroy]` をネストする
+
+5. CommentsController を用意する
+    - `before_action :authenticate_user!`
+    - `create`: 対象の Article を特定し、`current_user` と紐づいた Comment を保存する（`user_id` はフォームから渡さない）
+    - `destroy`: コメントの投稿者本人、または記事の作者のみ削除可、などルールを決めて承認する
+
+6. 記事の詳細画面に一覧・フォームを載せる
+    - `articles/show` にコメント一覧と、ログイン時のみ表示する投稿フォーム（未ログイン時は案内文でもよい）
+
+7. テスト（最小）
+    - モデル: `body` 必須など
+    - リクエスト: 未ログインで `POST` できないこと、ログイン済みで作成できること、など
+
+補足:
+
+- MVPでは匿名コメントは扱わず、`user_id` 必須で進めると実装が単純になる
