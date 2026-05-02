@@ -8,6 +8,7 @@ class ArticlesController < ApplicationController
   end
 
   def show
+    @comments = @article.comments.includes(:user).order(created_at: :asc)
   end
 
   def new
