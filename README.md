@@ -1,5 +1,7 @@
 # ruby-blog
 
+[![CI](https://github.com/konnononko/ruby-blog/actions/workflows/ci.yml/badge.svg)](https://github.com/konnononko/ruby-blog/actions/workflows/ci.yml)
+
 個人開発のブログWebアプリです。Rails 8 + Hotwire でシンプルに作り、必要に応じてドキュメント（`docs/`）に判断を残します。
 
 ## 機能（最初のスコープ）
