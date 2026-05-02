@@ -10,4 +10,3 @@ RSpec.describe "Database smoke test" do
     expect(value.to_i).to eq(1)
   end
 end
-

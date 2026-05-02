@@ -5,4 +5,3 @@ RSpec.describe "Boot smoke test" do
     expect(Rails.application).to be_a(Rails::Application)
   end
 end
-

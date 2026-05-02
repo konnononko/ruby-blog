@@ -65,7 +65,7 @@ group :test do
   gem "selenium-webdriver"
 end
 
-gem "dotenv-rails", groups: [:development, :test]
-gem "rspec-rails", "~> 8.0", groups: [:development, :test]
+gem "dotenv-rails", groups: [ :development, :test ]
+gem "rspec-rails", "~> 8.0", groups: [ :development, :test ]
 
 gem "devise", "~> 5.0"
