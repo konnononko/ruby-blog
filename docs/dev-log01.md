@@ -73,3 +73,12 @@
 
 この時点で MVP 範囲のデザインシステム適用は完了とした。狭い画面・ガラス上の可読性・ホバーとフォーカスの最終調整は必要に応じて別途。
 
+## リファクタリング（権限ロジックの一箇所化）
+
+`dev-plan01.md` の「優先度高リファクタ（権限の一箇所化）」に沿い、判定式をモデルに寄せた。
+
+- `Article#editable_by?(user)`: `user` が `nil` なら false、同一ユーザーなら true。`ArticlesController#authorize_owner!` と `articles/show` の記事ツールバー表示に使用。
+- `Comment#deletable_by?(user)`: `user` が `nil` なら false。コメント投稿者または記事の作者なら true。`CommentsController#destroy` と `articles/show` のコメント削除ボタンに使用。コントローラの `comment_destroy_allowed?` は削除した。
+- テスト: `article_spec` に `editable_by?`、`comment_spec` に `deletable_by?` とモデル前提の整理（作者・投稿者・他人）。`articles_spec` に非所有者の `GET edit` / `PATCH` / `DELETE` を追加（DELETE の example は `change(Article, :count)` のため、事前に記事を作成してからリクエストするよう調整）。
+- 確認: `bundle exec rspec` が通過（実施時点で 27 examples, 0 failures）。
+
