@@ -83,7 +83,7 @@ UXデザイン
     - [x] Rails新規プロジェクトを作成
     - [x] 必要なGemを追加
 - [x] 最初のRSpec smoke test
-- [ ] 機能実装
+- [x] 機能実装
     - [x] ユーザー認証
         - [x] 認証Gem（例: Devise）の導入
         - [x] ユーザーモデルの作成
@@ -110,7 +110,7 @@ UXデザイン
 - [x] CI/CD (Github Actions) 実装
     - [x] CI 自動テスト
     - [x] CDの前段階としてローカル実行できるDB同梱のdocker-composeを用意
-- [ ] Readme 整備
+- [x] Readme 整備
 
 ### 開発環境の準備
 

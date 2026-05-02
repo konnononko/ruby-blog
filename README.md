@@ -40,6 +40,8 @@ bundle exec rails db:prepare
 RAILS_ENV=test bundle exec rails db:prepare
 ```
 
+開発サーバは `bundle exec rails server` で起動し、ブラウザでは http://localhost:3000 にアクセスする。
+
 ## テスト
 
 ```bash
