@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <title><%= content_for(:title) || "Ruby Blog" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -18,29 +18,37 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icon.png">
 
-    <%# Includes all stylesheet files in app/assets/stylesheets %>
-    <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
+    <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
   </head>
 
   <body>
-    <nav>
-      <%= link_to "Articles", articles_path %>
-      <% if user_signed_in? %>
-        <%= button_to "Log out", destroy_user_session_path, method: :delete %>
-      <% else %>
-        <%= link_to "Sign up", new_user_registration_path %>
-        <%= link_to "Sign in", new_user_session_path %>
-      <% end %>
-    </nav>
+    <header class="top-nav">
+      <div class="top-nav__inner">
+        <%= link_to "Ruby Blog", root_path, class: "brand" %>
+        <nav class="top-nav__links" aria-label="Primary">
+          <%= link_to "Articles", articles_path, class: "nav-link" %>
+          <% if user_signed_in? %>
+            <%= button_to "Log out", destroy_user_session_path, method: :delete, class: "btn btn--ghost btn--small" %>
+          <% else %>
+            <%= link_to "Sign up", new_user_registration_path, class: "nav-link" %>
+            <%= link_to "Sign in", new_user_session_path, class: "nav-link" %>
+          <% end %>
+        </nav>
+      </div>
+    </header>
 
-    <% if notice.present? %>
-      <p class="notice"><%= notice %></p>
-    <% end %>
-    <% if alert.present? %>
-      <p class="alert"><%= alert %></p>
-    <% end %>
+    <main class="shell">
+      <div class="flash-stack">
+        <% if notice.present? %>
+          <div class="flash flash--notice" role="status"><%= notice %></div>
+        <% end %>
+        <% if alert.present? %>
+          <div class="flash flash--alert" role="alert"><%= alert %></div>
+        <% end %>
+      </div>
 
-    <%= yield %>
+      <%= yield %>
+    </main>
   </body>
 </html>

@@ -1,7 +1,9 @@
 <% content_for :title, "New article — Ruby Blog" %>
 
-<h1>New article</h1>
+<h1 class="page-title">New article</h1>
 
-<%= render "form", article: @article %>
+<div class="panel glass">
+  <%= render "form", article: @article %>
+</div>
 
-<p><%= link_to "Back to articles", articles_path %></p>
+<p class="meta"><%= link_to "← Back to articles", articles_path, class: "link-muted" %></p>

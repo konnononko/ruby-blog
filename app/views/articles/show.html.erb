@@ -1,41 +1,48 @@
 <% content_for :title, "#{@article.title} — Ruby Blog" %>
 
-<p><%= link_to "Back to articles", articles_path %></p>
+<p class="back-row"><%= link_to "← Back to articles", articles_path, class: "link-muted" %></p>
 
-<h1><%= @article.title %></h1>
-
-<p><%= simple_format(@article.body) %></p>
-
-<h2>Comments</h2>
-
-<% @comments.each do |comment| %>
-  <div>
-    <p><%= simple_format(comment.body) %></p>
-    <p><small><%= comment.user.email %> · <%= l(comment.created_at, format: :short) %></small></p>
-    <% if user_signed_in? && (comment.user_id == current_user.id || @article.user_id == current_user.id) %>
-      <%= button_to "Delete comment", article_comment_path(@article, comment), method: :delete, form: { data: { turbo_confirm: "Delete this comment?" } } %>
-    <% end %>
+<article class="panel glass">
+  <h1 class="page-title"><%= @article.title %></h1>
+  <div class="article-body">
+    <%= simple_format(@article.body) %>
   </div>
-<% end %>
 
-<% if user_signed_in? %>
-  <h3>Add a comment</h3>
-  <%= form_with model: [@article, Comment.new], local: true do |form| %>
-    <div>
-      <%= form.label :body, "Comment" %>
-      <%= form.text_area :body, rows: 5 %>
-    </div>
-    <div>
-      <%= form.submit "Post comment" %>
+  <% if user_signed_in? && @article.user_id == current_user.id %>
+    <div class="toolbar">
+      <%= link_to "Edit article", edit_article_path(@article), class: "btn btn--ghost btn--small" %>
+      <%= button_to "Delete article", article_path(@article), method: :delete, class: "btn btn--danger btn--small", form: { data: { turbo_confirm: "Are you sure?" } } %>
     </div>
   <% end %>
-<% else %>
-  <p><%= link_to "Sign in", new_user_session_path %> to comment.</p>
-<% end %>
+</article>
 
-<% if user_signed_in? && @article.user_id == current_user.id %>
-  <p>
-    <%= link_to "Edit", edit_article_path(@article) %>
-    <%= button_to "Destroy", article_path(@article), method: :delete, form: { data: { turbo_confirm: "Are you sure?" } } %>
-  </p>
-<% end %>
+<section aria-labelledby="comments-heading">
+  <h2 id="comments-heading" class="section-title">Comments</h2>
+
+  <% @comments.each do |comment| %>
+    <div class="comment-card">
+      <div class="article-body"><%= simple_format(comment.body) %></div>
+      <p class="meta"><%= comment.user.email %> · <%= l(comment.created_at, format: :short) %></p>
+      <% if user_signed_in? && (comment.user_id == current_user.id || @article.user_id == current_user.id) %>
+        <%= button_to "Delete comment", article_comment_path(@article, comment), method: :delete, class: "btn btn--danger btn--small", form: { data: { turbo_confirm: "Delete this comment?" } } %>
+      <% end %>
+    </div>
+  <% end %>
+
+  <% if user_signed_in? %>
+    <h3 class="subsection-title">Add a comment</h3>
+    <div class="panel panel--tight glass">
+      <%= form_with model: [@article, Comment.new], local: true do |form| %>
+        <div class="field">
+          <%= form.label :body, "Comment" %>
+          <%= form.text_area :body, rows: 5 %>
+        </div>
+        <div>
+          <%= form.submit "Post comment", class: "btn btn--primary" %>
+        </div>
+      <% end %>
+    </div>
+  <% else %>
+    <p class="meta"><%= link_to "Sign in", new_user_session_path %> to comment.</p>
+  <% end %>
+</section>

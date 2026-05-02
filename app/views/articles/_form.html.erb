@@ -1,5 +1,5 @@
 <% if article.errors.any? %>
-  <div>
+  <div class="field-error-box" role="alert">
     <h2><%= pluralize(article.errors.count, "error") %> prevented this article from being saved:</h2>
     <ul>
       <% article.errors.full_messages.each do |message| %>
@@ -10,17 +10,17 @@
 <% end %>
 
 <%= form_with model: article do |form| %>
-  <div>
+  <div class="field">
     <%= form.label :title %>
     <%= form.text_field :title %>
   </div>
 
-  <div>
+  <div class="field">
     <%= form.label :body %>
     <%= form.text_area :body, rows: 12 %>
   </div>
 
   <div>
-    <%= form.submit %>
+    <%= form.submit class: "btn btn--primary" %>
   </div>
 <% end %>
