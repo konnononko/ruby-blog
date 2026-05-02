@@ -60,3 +60,16 @@
 ### 動作確認
 - ブラウザで記事の CRUD とコメントの投稿・削除まで確認済み
 
+## デザインシステム実装（MVP）
+
+方針は `dev-plan01.md` の「デザインシステム方針」「デザインシステム実装手順」に沿う。ウォームライト背景・アンバー系アクセント・ガラス調パネルを CSS 変数と共通クラスで統一した。
+
+- トークンとスタイル: `app/assets/stylesheets/application.css` に `:root` の色・余白・角丸・影・ガラス用変数を置き、`body`・リンク・`:focus-visible`・フラッシュ・ナビ・ボタン・フォーム・カード／パネルなどをトークン参照で定義。
+- レイアウト: `app/views/layouts/application.html.erb` でシェル（最大幅・横余白）、 sticky ナビ、`content_for :title` とページ見出しの流れを整理。
+- 適用した画面: トップ（`pages/home`）、記事一覧・詳細・フォーム（`articles/*`）、記事詳細のコメント欄、Devise 一式。
+- Devise: `rails generate devise:views` でビューをプロジェクト側に生成し、各テンプレートを `panel glass`、`page-title`、`field` / `form-actions`、`btn` などに合わせて調整。共有パーシャルはエラー表示・サインイン関連リンクをデザインシステムに合わせた（メーラー HTML は対象外）。
+- 補助クラス例: `.field--check`（remember me 等）、`.field-hint`、`.devise-links`、`.form-actions` など。
+- 動作確認: ブラウザでログインまわりを含め確認。テストは `bundle exec rspec` で問題なし。
+
+この時点で MVP 範囲のデザインシステム適用は完了とした。狭い画面・ガラス上の可読性・ホバーとフォーカスの最終調整は必要に応じて別途。
+
