@@ -4,6 +4,8 @@
 
 個人開発のブログWebアプリです。Rails 8 + Hotwire でシンプルに作り、必要に応じてドキュメント（`docs/`）に判断を残します。
 
+![screenshot](docs/images/app_screenshot.png)
+
 ## 機能（最初のスコープ）
 - ユーザー認証
 - 記事の投稿
