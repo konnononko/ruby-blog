@@ -632,4 +632,681 @@ name = nil || "guest"    # => "guest"
 - `params` の展開、スコープの `-> { where(...) }`、RSpec の `expect { }.to change` は、ブロックと `&`、lambda の文化に乗っている。
 - 再オープンと Active Support の `String` / `Hash` 拡張は、プロジェクトで `blank?` などが「標準のように」見える理由のひとつである。
 
-ここまでで Ruby の輪郭は揃う。続くドキュメントでは Rails・PostgreSQL・このリポジトリのコードにフォーカスを移すとよい。
+ここまでで Ruby の輪郭は揃う。以下では同じドキュメント内で Rails にフォーカスを移す。
+
+## Railsについて
+
+### Railsの特徴
+
+Rails は Ruby 上に構築されたフルスタックの Web アプリケーションフレームワークである。HTTP からデータベース、HTML 応答、バックグラウンドジョブやメールまで、Web サービスに必要な要素をひとつの規約の下にまとめる設計が特徴になる。
+
+#### 設定より規約（Convention over Configuration）
+
+ファイル名・クラス名・テーブル名・URL の形など、繰り返し決まることをフレームワーク側が仮定し、設定ファイルを薄く保つ。迷いどころが減り、新規参加者も「だいたいここに書く」で済みやすい。一方、規約から外れた構成には追加の設定や説明コストがかかる。
+
+#### MVC とリクエストの流れ
+
+ブラウザからのリクエストはルーティングでコントローラのアクションに割り当てられ、モデル（ドメインと永続化）とビュー（テンプレート）を組み合わせて応答を組み立てる。責務の分離が学習の入口にもなり、拡張時も変更箇所を探しやすい。
+
+#### Active Record とデータベース
+
+リレーショナル DB をオブジェクトとして扱う ORM レイヤが標準で統合されている。マイグレーションでスキーマをバージョン管理し、モデルにバリデーションや関連（`has_many` など）を宣言するスタイルが主流である。このリポジトリでも PostgreSQL と組み合わせて使っている。
+
+#### ルーティング・コントローラ・ビュー・ヘルパ
+
+URL とコードの対応、Strong Parameters、フィルタ（`before_action` など）、ERB やパーシャル、フラッシュ・セッションまわりが一体として提供される。HTML フォームとコントローラのつなぎ方もパターン化されている。
+
+#### デフォルトの安全対策の方向性
+
+クロスサイトリクエストフォージェリ（CSRF）トークン、コンテンツセキュリティやエスケープの考え方など、Web 特有のリスクに対して「最初からそう動く」前提が多い（すべてを保証するわけではなく、アプリ固有の検証は別途必要）。
+
+#### Hotwire（Turbo / Stimulus）とモダンな UI
+
+近年の Rails は、フル SPA を前提にせず、サーバー主導の HTML を保ちつつ部分的な更新や軽い JavaScript を足す Hotwire 系が推奨される流れにある。このプロジェクトの技術スタック（Rails 8 + Hotwire）もその延長線上にある。
+
+#### ジェネレータとタスク
+
+`rails generate` でモデル・コントローラ・マイグレーションの雛形を生成したり、`rails db:migrate` や `bin/dev` など開発・運用用のコマンドが揃う。個人開発からチーム開発まで、作業の型を共有しやすい。
+
+#### Ruby と Gem との一体性
+
+Rails 自体が巨大な Gem であり、認証・テスト・デプロイなどは別 Gem で足す文化と相性がよい。言語レベルの柔らかさ（ブロック、メタプログラミング）をフレームワークが内部で活用しているため、表向きは宣言的な DSL に見えることが多い。
+
+#### まとめ
+
+Rails は「Web アプリ一式を、決まった型で素早く安全に進める」ためのフレームワークである。用途面の適性は次の見出しで整理する。
+
+##### 補足
+
+ルーティング（Routing）:
+「この URL（と HTTP メソッド）を、どのコントローラのどのアクションに渡すか」を決めるルールのこと。config/routes.rb に書くことが多いです。例: GET /articles → ArticlesController#index。
+
+コントローラ（Controller）:
+リクエストを受け取り、モデルやビューを使って処理を組み立てるクラス。認可・パラメータの扱い・リダイレクトやステータスコードの決定など、HTTP の入口に近い役割です。ArticlesController のような名前で、index / show / create などのメソッドが「アクション」になります。
+
+Strong Parameters（ストロングパラメータ）:
+クライアントから送られた params のうち、どのキーをモデルに渡してよいかをホワイトリストで許可する仕組み。params.require(:article).permit(:title, :body) のように書き、意図しない属性の一括代入（Mass Assignment）を防ぎます。
+
+パーシャル（Partial）:
+ビューの部品テンプレート。_form.html.erb のようにファイル名が _ で始まり、render "form" などで他のテンプレートに埋め込みます。同じフォームや一覧行を繰り返し使うときに使います。
+
+フラッシュ（Flash）:
+次の 1 リクエストだけ表示したい短いメッセージ用の仕組み。redirect_to ..., notice: "保存しました" の notice や alert が典型で、レイアウトで flash を読んで表示します。リダイレクト後に一度だけユーザーに伝えたい内容向けです。
+
+セッション（Session）:
+サーバー側（や暗号化クッキー）に保持するユーザーごとの小さな状態。ログイン状態やカートの中身など、複数リクエストにまたがって覚えておきたい情報を置きます。フラッシュより長く持つ用途向けです（実装は設定によります）。
+
+CSRF（Cross-Site Request Forgery）:
+別サイト上の罠ページなどから、ログイン済みユーザーに意図しないリクエストを送らせる攻撃の総称。Rails はフォームに CSRF トークンを付け、正規ページ経由の POST かどうかを検証するデフォルトの仕組みがあります（protect_from_forgery など）。
+
+### Railsの得意なこと
+
+「得意」とは、規約・部品・コミュニティ知識が揃い、少ない決断でプロダクトに近い成果が出やすい領域を指す。
+
+#### サーバー中心の Web アプリと CRUD 中心の業務
+
+画面遷移、フォーム、認可、DB の読み書き、一覧・詳細・編集といった王道の形に強い。このリポジトリのブログのように、HTML を返すアプリを短時間で形にしやすい。
+
+#### プロトタイプから中規模サービスまでの立ち上げ
+
+ジェネレータとマイグレーションでスキーマと画面のたたき台が早い。仕様が変わっても、MVC の分割と Active Record のまわりで修正箇所を追いやすい。
+
+#### 規約によるチームの同期
+
+フォルダとファイルの意味がプロジェクト間で似通うため、参加直後から「どこを読めばよいか」が推測しやすい。レビューや引き継ぎのコストを下げやすい。
+
+#### リレーショナル DB と一体の設計
+
+トランザクション、関連、バリデーション、スコープをモデルに寄せるスタイルが確立している。PostgreSQL のような RDBMS と組み合わせた業務アプリと相性がよい。
+
+#### Hotwire による「薄いフロント」
+
+フル SPA を組まずに、サーバーが HTML を組み立て、必要なところだけ Turbo や Stimulus で補う構成に向く。JavaScript のビルド地獄を小さく保ちやすい。
+
+#### Gem とドキュメント文化
+
+認証、管理画面、テスト、デプロイなど、よくある要件は Gem と記事で手がかりが取りやすい。困ったときの検索ヒット率が高いほうに属する。
+
+### Railsの不得意なこと（向きにくい用途）
+
+「不得意」は、フレームワークの前提とズレると戦い続けることになる、という意味で使う。代替アーキテクチャや別レイヤの併用が現実的になる場面がある。
+
+#### クライアント主導の巨大 SPA だけを載せる場合
+
+画面の状態とルーティングのほとんどをブラウザ側フレームワークに置き、サーバーは JSON API に限定するなら、Rails の HTML 中心の強みを活かしにくい。API モードや別バックエンドの選択肢と比較される。
+
+#### 規約と真逆のディレクトリやデータモデル
+
+既存の命名や URL 規則をすべて捨てたい、といった要件では設定と説明コストが膨らむ。フレームワークと折り合いを付けられないなら別の土台も検討対象になる。
+
+#### 超低レイテンシや組み込みの主役
+
+言語ランタイムとフレームワークの重なりはある。ミリ秒単位を争う基盤やファームウェアの第一選択には向きにくい（Ruby 自体の不得意分野と重なる）。
+
+#### 「Rails だけ」で無限スケールを期待する場合
+
+アクセスが増えるとキャッシュ、ジョブキュー、読み取り専用レプリカ、サービス分割など、アプリケーション設計とインフラの追加が必要になる。Rails は出発点として強いが、規模の先は別の工夫が要る。
+
+#### モバイルアプリの本体
+
+iOS/Android の UI とロジックの主役は各プラットフォームのスタックに置かれることが多く、Rails はバックエンドや管理画面として横に置かれることがほとんどである。
+
+---
+
+以上は適性の整理である。不得意な軸に近づいたら、Rails をやめるのではなく API 化・マイクロサービス化・バッチ分離などで住み分ける選択も多い。
+
+### Railsの基本的な使い方や機能
+
+日常開発で繰り返し触れる単位を、リクエストの流れに沿って並べる。細部はバージョンやプロジェクト設定で差があるため、公式ガイドと自分の `config` をあわせて読むとよい。
+
+#### 開発の起動とコマンド
+
+プロジェクトルートで依存を `bundle install` したうえで、`bin/dev` や `bin/rails server` でアプリを起動する構成が一般的である。Rails 本体やタスクは `bin/rails`（旧 `rails`）経由で呼ぶ。`bin/rails console`（`c`）で対話的にモデルを試せる。ルート一覧は `bin/rails routes`、DB マイグレーションは `bin/rails db:migrate`、ロールバックは `db:rollback` など。
+
+```bash
+# Gemfile の依存をインストール（初回や Gem 変更後）
+bundle install
+
+# 開発用にサーバ（とフロントのウォッチャ等）をまとめて起動する例（プロジェクトにより bin/dev の中身は異なる）
+bin/dev
+
+# Puma のみ起動したい場合の例
+bin/rails server
+# 別名: bin/rails s
+
+# 対話シェル。モデルや DB をその場で試せる
+bin/rails console
+bin/rails c
+
+# ルートとコントローラアクションの対応表を表示
+bin/rails routes
+
+# 未適用のマイグレーションを DB に反映
+bin/rails db:migrate
+
+# 直前のマイグレーションを 1 段戻す（STEP=2 などで複数段も可）
+bin/rails db:rollback
+```
+
+#### ルーティング（`config/routes.rb`）
+
+URL とコントローラアクションの対応を宣言する。`resources :articles` のように書くと、REST 風の `index` / `show` / `new` / `create` / `edit` / `update` / `destroy` がまとめて定義される。`only` / `except` で削ったり、`member` / `collection` で追加のパスを足したりする。
+
+```ruby
+# config/routes.rb のイメージ（このリポジトリに近い形）
+Rails.application.routes.draw do
+  # Devise がログイン・登録用のルートを一括で定義する
+  devise_for :users
+
+  # GET / → PagesController#home
+  root "pages#home"
+
+  # articles の REST 7 アクション + ネストした comments（create / destroy のみ）
+  # 例: POST /articles/:article_id/comments → CommentsController#create
+  resources :articles do
+    resources :comments, only: %i[create destroy]
+  end
+end
+```
+
+#### コントローラ（`app/controllers`）
+
+リクエストごとにインスタンスが作られ、アクション（メソッド）が呼ばれる。`before_action` で共通処理（認証・認可・共通のセットアップ）を挟める。`params` はリクエストパラメータのラッパで、Strong Parameters で許可した属性だけをモデルに渡す。`render` でテンプレートやステータスを選び、`redirect_to` で別 URL へ送る。
+
+```ruby
+# コントローラのイメージ（説明用。実ファイルとは行数・名前が完全一致しない場合がある）
+class ArticlesController < ApplicationController
+  # ログイン必須。index / show だけ例外
+  before_action :authenticate_user!, except: %i[index show]    # 補足：シンボルリテラル :authenticate_user! + キーワード引数 except: ...
+  # 複数アクションで @article をセット
+  before_action :set_article, only: %i[show edit update destroy]
+
+  def show
+    # インスタンス変数はビュー（show.html.erb）から参照される
+    @article = Article.find(params[:id])
+  end
+
+  def create
+    # Strong Parameters で許可したキーだけ渡す（Mass Assignment 対策）
+    @article = current_user.articles.build(article_params)
+    if @article.save
+      redirect_to @article, notice: "保存しました"
+    else
+      # 422 Unprocessable Entity でフォーム再表示（バリデーションエラー表示用）
+      render :new, status: :unprocessable_entity
+    end
+  end
+
+  private
+
+  def article_params
+    params.require(:article).permit(:title, :body)
+  end
+end
+```
+
+#### モデルと Active Record（`app/models`）
+
+DB のテーブルと対応するクラスがモデルになることが多い。`rails generate model` とマイグレーションでカラムを定義し、`validates` でバリデーション、`has_many` / `belongs_to` などで関連を宣言する。`User.find(1)`、`Article.where(...)`、`article.save` のような API で CRUD に近い操作をまとめる。
+
+```ruby
+# app/models/article.rb に近いイメージ
+class Article < ApplicationRecord
+  belongs_to :user
+  has_many :comments, dependent: :destroy # 記事削除時にコメントも削除
+
+  validates :title, :body, presence: true
+end
+
+# bin/rails console 内での操作例
+# article = Article.find(1)           # 主キー検索（なければ RecordNotFound）
+# Article.where(user_id: 1).to_a      # 条件に合うレコードの配列
+# article.update(title: "新タイトル")  # 成功すれば true、バリデーション失敗なら false
+```
+
+##### 補足
+
+Active Record はふたつの意味で使われますが、Rails の文脈ではだいたい後者を指します。
+
+1. デザインパターンの名前（Martin Fowler）:
+「データベースの 1 行 ↔ アプリケーション内の 1 オブジェクト」と対応させ、そのオブジェクトにデータの読み書きやビジネスルールを載せる考え方を Active Record パターンと呼びます。
+
+2. Rails に組み込まれている ORM（よく言う「Active Record」）:
+Rails では ApplicationRecord を継承したモデルクラス（例: class Article < ApplicationRecord）がこのパターンを実装した ORM（Object-Relational Mapping）レイヤです。
+
+ざっくり役割は次のとおりです。
+
+テーブルの行を Ruby のオブジェクトとして扱う（Article.find(1)、article.save など）。
+カラムをアトリビュートとして読み書きする（article.title）。
+関連（has_many / belongs_to など）でテーブル間のつながりを表す。
+バリデーション（validates）や スコープ（scope / where チェーン）をモデルに書ける。
+マイグレーションと組み合わせてスキーマを管理する。
+つまり、「SQL を直接たくさん書かずに、Ruby のクラスとメソッドで DB を操作するための中心部品」だと捉えるとよいです。Rails の「M」の主役はこの Active Record モデルです。
+
+#### ビューとヘルパ（`app/views`）
+
+ERB（`.html.erb`）に HTML と `<%= %>` で式を埋め込む。`app/views/layouts/application.html.erb` が共通枠。`_foo.html.erb` をパーシャルとして `render` する。`link_to`、`form_with`、`button_to` などはヘルパで、適切な URL やメソッド属性を生成する。
+
+```erb
+<%# この行は出力しない（ERB のコメント） %>
+
+<%# エラーがあるときだけ一覧表示 %>
+<% if article.errors.any? %>
+  <ul>
+    <% article.errors.full_messages.each do |message| %>
+      <li><%= message %></li><%# <%= はエスケープ付きで出力 %>
+    <% end %>
+  </ul>
+<% end %>
+
+<%# model: に渡すと URL・HTTP メソッド（POST/PATCH 等）を推測してフォームを生成 %>
+<%= form_with model: article do |form| %>
+  <div>
+    <%= form.label :title %>
+    <%= form.text_field :title %>
+  </div>
+  <%= form.submit %>
+<% end %>
+
+<%# 別テンプレートからパーシャル _form.html.erb を差し込む例 %>
+<%# <%= render "form", article: @article %> %>
+```
+
+#### アセットとフロントまわり
+
+スタイルシートや JavaScript は `app/assets` や `app/javascript` に置き、パイプラインや importmap などプロジェクトの設定に従って配信される。このリポジトリでは Hotwire（Turbo・Stimulus）を使う前提で初期化されていることが多い。
+
+```ruby
+# app/views/layouts/application.html.erb に近い記述のイメージ（実ファイルのタグ名は環境で異なる場合がある）
+<%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
+<%= javascript_importmap_tags %>
+# ...
+<%= yield %>  <%# 各アクションのテンプレートがここに埋まる %>
+```
+
+#### 設定と環境（`config`）
+
+`database.yml` で DB 接続、`routes.rb` でルート、`environments/development.rb` などで環境別の挙動（ログレベル、キャッシュ、ホスト許可など）を切り替える。秘密情報は.credentials や環境変数に寄せる。
+
+```yaml
+# config/database.yml のイメージ（development のみ抜粋）
+development:
+  adapter: postgresql
+  encoding: unicode
+  database: myapp_development
+  # 接続先ホスト・ユーザーは環境変数や別ファイルに分けることも多い
+  # host: localhost
+  # username: ...
+  # password: ...
+```
+
+#### メール・ジョブ・タスク（概要）
+
+`Action Mailer` でメール送信クラスを定義し、コントローラやジョブから呼ぶ。重い処理は `Active Job` とバックエンド（Redis など）に任せる構成にできる。Rake タスクは `lib/tasks` に `.rake` で定義し、`bin/rails task_name` で実行する。
+
+```ruby
+# app/mailers/application_mailer.rb を継承したメイラーのイメージ
+class UserMailer < ApplicationMailer
+  def welcome(user)
+    @user = user
+    mail(to: @user.email, subject: "Welcome")
+  end
+end
+
+# コントローラ等から: UserMailer.welcome(user).deliver_later
+
+# app/jobs/application_job.rb を継承したジョブのイメージ
+class HeavyJob < ApplicationJob
+  queue_as :default
+
+  def perform(record_id)
+    # 時間のかかる処理（メール送信・外部 API など）
+    record = Article.find(record_id)
+    # ...
+  end
+end
+
+# lib/tasks/blog.rake のイメージ
+namespace :blog do
+  desc "One-line description for bin/rails -T"
+  task refresh_counts: :environment do
+    # :environment で Rails アプリをロードしてから実行
+    puts Article.count
+  end
+end
+# 実行例: bin/rails blog:refresh_counts
+```
+
+#### テスト（このプロジェクトでは RSpec）
+
+`rails generate` に相当する Spec や、`spec/requests` で HTTP まで含めた検証を書く。フレームワークのデフォルトは Minitest だが、本リポジトリは AGENTS に従い RSpec を使う。
+
+```ruby
+# spec/requests/articles_spec.rb に近いイメージ
+require "rails_helper"
+
+RSpec.describe "Articles", type: :request do
+  it "lists articles" do
+    # GET リクエストをシミュレート
+    get articles_path
+    # レスポンスの HTTP ステータスを検証
+    expect(response).to have_http_status(:success)
+  end
+end
+```
+
+#### 1 リクエストの流れ（おさらい）
+
+ルーティングでアクションが決まる → コントローラが `params` とモデルを扱う → ビューが HTML を組み立てる（またはリダイレクト）→ レスポンスが返る。この線に沿ってファイルを開くと、迷子になりにくい。
+
+```
+1. GET /articles/5 → routes.rb が ArticlesController#show に割り当て
+2. ArticlesController#show が params[:id] で Article を取得し @article をセット
+3. render が省略されていれば既定で app/views/articles/show.html.erb を表示
+4. レイアウト application.html.erb の <%= yield %> にテンプレート本体が差し込まれる
+（redirect_to の場合は 3 がスキップされ、別 URL へのレスポンスになる）
+```
+
+### Railsに特有な記法
+
+Ruby の文法に加え、Rails が DSL（ドメイン特化したメソッドの並び）として用意している記法が多い。ここでは頻出のものを「見た目」と「役割」で整理する（すべてが Rails 独占というより「Rails でよく見る」ものが中心）。
+
+#### ルーティング DSL（`routes.rb`）
+
+`draw` のブロックの中だけが特別なミニ言語のように読める。`resources`、`namespace`、`scope`、`member` / `collection` などが宣言的に HTTP とコントローラを結ぶ。
+
+```ruby
+# REST の 7 アクションをまとめて定義
+resources :articles
+
+# URL プレフィックスとモジュールをまとめる例（管理画面など）
+namespace :admin do
+  resources :posts
+end
+
+# 追加アクションをネストしたパスに付ける例
+resources :articles do
+  member do
+    get :publish   # GET /articles/:id/publish
+  end
+end
+```
+
+#### コントローラのフィルタとオプション
+
+`before_action`、`around_action`、`after_action` にメソッド名をシンボルで渡し、`only` / `except` でアクションを限定する書き方が定番である。
+
+```ruby
+before_action :authenticate_user!, except: %i[index show]
+before_action :set_article, only: %i[show edit update destroy]
+```
+
+#### Active Record の宣言マクロ
+
+モデルクラス直下で関連・バリデーション・スコープなどを宣言する。実行時にメソッドやコールバックが組み立てられる。
+
+```ruby
+belongs_to :user
+has_many :comments, dependent: :destroy
+validates :title, presence: true
+
+# よく使うクエリに名前を付ける例
+scope :published, -> { where(published: true) }
+```
+
+#### Strong Parameters のイディオム
+
+`require` でルートキーを固定し、`permit` で許可リストを渡す三連が Rails の定番形である。
+
+```ruby
+params.require(:article).permit(:title, :body)
+```
+
+#### パスヘルパと URL ヘルパ
+
+ルーティングから `_path`（相対パス文字列）と `_url`（スキーム・ホスト込み）が生成される。`articles_path`、`article_path(@article)` のようにモデルや id を渡せる。
+
+```erb
+<%= link_to "一覧", articles_path %>
+<%= link_to @article.title, article_path(@article) %>
+```
+
+#### ビューとレイアウトのコンポジション
+
+`render` の省略形、`content_for` と `yield :sidebar` のような名前付きプレースホルダ、`<%= yield %>` でレイアウトに本文を差し込むのが Rails 流の分割である。
+
+```erb
+<% content_for :title, "ページタイトル" %>
+<%# レイアウト側では yield :title など %>
+```
+
+#### マイグレーション DSL
+
+`change` メソッドの中で `create_table`、`add_reference`、`t.string` などを並べ、スキーマを Ruby でバージョン管理する。
+
+```ruby
+create_table :articles do |t|    # 補足：メソッド呼び出し（マイグレーション DSLの一部） + シンボルリテラル + ブロック
+  t.string :title, null: false    # 補足：tオブジェクトのメソッド呼び出し + シンボル + キーワード引数
+  t.text :body
+  t.references :user, null: false, foreign_key: true
+  t.timestamps
+end
+```
+
+#### Concern（`app/models/concerns` / `app/controllers/concerns`）
+
+共通処理をモジュールに切り出し、`include` と `ClassMethods` ブロックなどでモデルやコントローラに混ぜるパターンが公式に推奨されている（ファイル配置も規約化されている）。
+
+#### Active Support 由来の拡張メソッド
+
+`1.day.ago`、`presence`、`blank?`、`try` など、Ruby 標準にはないメソッドがモデル・文字列・時刻などに生える。Rails のコードやビューで頻出するが、素の Ruby だけでは存在しないこともある。
+
+#### Gem と initializer
+
+`Gemfile` で依存を宣言し、`config/initializers/*.rb` で起動時に設定を注入する。フレームワークというよりエコシステムだが、Rails プロジェクトではこの組み合わせが「よくある記法」として繰り返し現れる。
+
+---
+
+Ruby のメタプログラミングの上にこれらの DSL が載っているため、「メソッドのように見えるキーワード」が増える。迷ったら公式ガイドの該当章と、そのメソッドの API ドキュメントを参照するとよい。
+
+### Railsのアーキテクチャ
+
+Rails は単一の巨大クラスではなく、HTTP の入口からテンプレートと DB までを役割ごとに分割し、規約でファイル配置と名前を対応させる。ここでは全体の骨格だけを押さえる。
+
+#### MVC と責務
+
+- Model（`app/models`）… ドメインルール、バリデーション、永続化（Active Record）。DB との境界がここに集まる。
+- View（`app/views`）… HTML（や JSON）の組み立て。プレゼンテーションに近い変更はビューやヘルパへ。
+- Controller（`app/controllers`）… リクエスト単位のオーケストレーション。認可・パラメータ整形・どのテンプレートを返すかの決定。
+
+「Fat Model / Skinny Controller」を目指すといった格言は、ビジネスルールをモデル側に寄せ、コントローラは薄く保つという整理である（絶対ではないが読み手への指針になりやすい）。
+
+#### リクエストからレスポンスまでの流れ
+
+おおよそ次の順で処理が流れる。
+
+1. Rack 互換のサーバが HTTP を受け取る。
+2. ミドルウェアスタック（ログ、セッション、CSRF など）がリクエストを通過させる。
+3. ルータがパスとメソッドからコントローラアクションを決める。
+4. コントローラがモデルを読み書きし、`render` または `redirect_to` で応答を決める。
+5. ビューが組み立てられ、レイアウトで包まれてレスポンスボディになる。
+
+エラー時や API では JSON のみ返す、といった分岐もコントローラとビュー（または `jbuilder` 等）の組み合わせで行う。
+
+#### 規約とディレクトリ
+
+クラス名・ファイル名・テーブル名・URL が対応する前提で、`app/` 以下が機能別に割れる。`config/routes.rb` が URL 空間の設計図、`db/schema.rb`（または構造ダンプ）が現在のスキーマの写しになる。迷ったときは「どの層の責務か」を先に決めると置き場所が決まりやすい。
+
+#### データ層とマイグレーション
+
+スキーマの変更はマイグレーションでバージョン管理し、実行結果がモデル（Active Record）の前提となる。関連（`has_many` など）はオブジェクトグラフとしての読み書きを単純化するが、複雑なクエリはスコープや SQL に逃がす判断もある。
+
+#### 横断的関心事
+
+認証（このプロジェクトでは Devise）、権限チェック、`before_action`、Concern による共有ロジックなど、複数コントローラやモデルにまたがる処理をどこに置くかが設計の論点になる。
+
+#### フロントエンドの位置づけ
+
+デフォルトではサーバーが HTML を組み立て、CSS・JavaScript はアセット機構や importmap 経由でブラウザへ渡す。Hotwire（Turbo / Stimulus）は、その HTML 中心の延長で部分的な更新や軽い振る舞いを足すためのレイヤとして置かれることが多い。
+
+#### 周辺サブシステム
+
+メール（Action Mailer）、非同期処理（Active Job）、定期・ワンショットのバッチ（Rake）、これらは MVC の外側だが、ユースケースに応じてコントローラやモデルから呼び出される。
+
+#### このリポジトリでの対応関係（先取りの地図）
+
+記事・コメント・ユーザー認証がモデルとコントローラに分かれ、ビューは ERB とパーシャル、スタイルは `application.css`、テストは RSpec のリクエストスペックで HTTP を検証する、という線で読める。詳細は後続の「フォルダ構成」「このプロジェクトのコード解説」でファイル単位に落とすとよい。
+
+### Railsのフォルダ構成・ファイルの種類と役割（アーキテクチャとの関係）
+
+Rails はルート直下を用途ごとに分割し、`app/` がアプリケーション本体、`config/` が振る舞いの設定、`db/` が永続化の履歴、という住み分けになる。ここでは代表的なディレクトリと、アーキテクチャ上のどの層に効くかを対応させて読む。
+
+#### ルート直下に並ぶ主なディレクトリ
+
+- `app/` … HTTP に応答する本体（コントローラ・モデル・ビューなど）。
+- `config/` … ルート、DB、環境別設定、初期化子、デプロイ（Kamal など）の宣言。
+- `db/` … マイグレーション、`schema.rb`（または `structure.sql`）、シードスクリプト。
+- `lib/` … アプリ固有のライブラリやタスク。自動読み込みの設定はプロジェクトによる。
+- `public/` … 静的ファイル。Rails が処理しないパスでそのまま配信されるもの。
+- `storage/` … Active Storage を使う場合のアップロード置き場など。
+- `tmp/` … キャッシュ、ソケット、ログの退避など一時ファイル。
+- `log/` … 環境別ログ。
+- `vendor/` … サードパーティ資産を置くことがある（頻度は低下気味）。
+- `bin/` … `rails`、`setup`、`dev` など実行可能ラッパ。
+- `spec/`（本プロジェクト）または `test/` … 自動テスト。AGENTS では RSpec を使用する。
+
+アーキテクチャの話でいう「リクエスト処理の中心」は `app/` と `config/routes.rb`。「データの形の単一情報源」はマイグレーション実行後の `db/schema.rb` とモデルクラスの両方を見る。
+
+#### `app/controllers`
+
+コントローラクラス（`*_controller.rb`）。ルーティングで選ばれたアクションが実行され、モデルやビューを組み合わせる。`ApplicationController` に共通フィルタやヘルパを置く。アーキテクチャでは HTTP のユースケースごとの入口。
+
+#### `app/models`
+
+Active Record モデル（通常テーブルと 1 対 1）。`ApplicationRecord` を継承する。バリデーション、関連、ドメインロジックの置き場。アーキテクチャではドメインと永続化の境界。
+
+#### `app/views`
+
+ERB などのテンプレート。`layouts/` は共通枠、`articles/` のようにコントローラ名に対応するフォルダにアクション名のファイルを置く。`_` で始まるファイルはパーシャル。Devise を使うと `devise/` の下に認証画面が増える。アーキテクチャではプレゼンテーション層。
+
+#### `app/helpers`
+
+ビュー用のヘルパモジュール（`ApplicationHelper` など）。複雑な表示ロジックをテンプレートから切り出す。アーキテクチャではビュー寄りの再利用。
+
+#### `app/mailers` と `app/views` 以下のメーラーテンプレート
+
+メール送信用クラスと、メール本文のテンプレート（`layouts/mailer` など）。アーキテクチャでは「画面以外の出力チャネル」。
+
+#### `app/jobs`
+
+`ApplicationJob` を継承したジョブ。非同期処理の単位。アーキテクチャではリクエスト／レスポンスの外側で時間のかかる処理を逃がす。
+
+#### `app/assets` と `app/javascript`
+
+スタイルシートや画像（プロジェクトによる）。JavaScript は importmap 構成なら `app/javascript` に配置し、Stimulus コントローラは `javascript/controllers/` に置かれる。このリポジトリでは `application.css` と Stimulus の雛形がある。アーキテクチャではブラウザへ渡す静的資産と薄いクライアント挙動。
+
+#### `config` のよく触るファイル
+
+- `routes.rb` … URL 空間の設計（ルーティング DSL）。
+- `database.yml` … 環境別 DB 接続。
+- `application.rb` / `environment.rb` … アプリ全体のフレームワーク設定。
+- `environments/*.rb` … 開発・本番など環境別の挙動。
+- `initializers/*.rb` … 起動時に読み込む追加設定（Gem が指示する設定など）。
+- `deploy.yml` など … Kamal 利用時のデプロイ宣言。
+
+アーキテクチャでは「コードではなく設定で差し替える層」がここに集まる。
+
+#### `db`
+
+- `migrate/` … スキーマ変更のバージョン履歴。
+- `schema.rb` … 現在のスキーマのまとめ（マイグレーション適用後に更新される）。
+- `seeds.rb` … 開発・初期データ投入。
+
+アーキテクチャではモデルが依存する物理スキーマの記録。
+
+#### アーキテクチャとの対応を一文で引くと
+
+- ルーティングとコントローラ … `config/routes.rb` と `app/controllers` が HTTP の境界。
+- ドメインと DB … `app/models` と `db/` がデータと整合をとる。
+- 表示 … `app/views` と `app/helpers`、およびレイアウトが応答の見た目。
+- 横断関心事 … Concern は `app/models/concerns` や `app/controllers/concerns`（必要なら）、認証は Gem と初期設定が絡む。
+- 資産とフロント … `app/assets`、`app/javascript` がブラウザ側の補助線。
+
+フレームワークはこの配置を前提にガイドやジェネレータが動くため、「まず標準の場所を見る」ことがリーディングコストを下げる。
+
+### Railsでのデータベースの扱い方
+
+Rails はリレーショナル DB を前提に、接続設定・スキーマのバージョン管理・オブジェクトとしての読み書きをひとつのストーリーで扱う。この節では流れとよくある操作の置き場所を整理する。
+
+#### 接続設定（`config/database.yml`）
+
+環境（`development` / `test` / `production` など）ごとに、アダプタ名（例: `postgresql`）、データベース名、ホスト、ユーザー、パスワードなどを宣言する。Rails 起動時に Active Record がこの設定で接続プールを張る。このリポジトリの AGENTS でも PostgreSQL が前提になっている。
+
+#### スキーマの単一情報源としてのマイグレーションと `schema.rb`
+
+テーブル作成・カラム追加・インデックス・外部キーなどは `db/migrate/` の Ruby ファイルで記述し、`bin/rails db:migrate` で DB に適用する。適用後、`db/schema.rb`（または `db/structure.sql` を使う構成の場合はそちら）が現在のスキーマの写しとして更新される。チームでは「マイグレーションをマージしてから migrate」が基本フローになる。
+
+```ruby
+# マイグレーションのイメージ（change メソッド内）
+add_column :articles, :published_at, :datetime
+add_index :articles, :user_id
+```
+
+#### Active Record での読み書き
+
+モデルクラスがテーブルの行に対応する。`find` / `find_by` / `where` チェーンで取得し、`new` + `save` または `create` で挿入し、`update` / `destroy` で更新・削除する。失敗時はバリデーションエラーや例外のどちらかになる（`save!` は失敗時に例外）。
+
+```ruby
+# 読み取りの例
+Article.find(1)
+Article.where(user_id: 1).order(created_at: :desc).limit(10)
+
+# 書き込みの例（バリデーションが通れば true）
+article = Article.new(title: "Hi", body: "...", user: current_user)
+article.save
+```
+
+#### 関連（アソシエーション）と外部キー
+
+`belongs_to` / `has_many` / `has_one` などでテーブル間を宣言し、`user.articles` のように関連経由でアクセスする。マイグレーションで `t.references :user, foreign_key: true` のように外部キー制約を付けると、DB 側でも参照整合性が保たれる。
+
+#### バリデーションとコールバック
+
+`validates` で保存前のルールをモデルに書く。`before_save` などのコールバックで副作用を挟めるが、複雑になると追いにくいのでドメインロジックの置き場を意識する。
+
+#### トランザクション
+
+複数ステップをまとめて成功／失敗させたいときは `ActiveRecord::Base.transaction` ブロックで囲む。失敗時にロールバックされ、データの中途半端な状態を防ぎやすい。
+
+```ruby
+ActiveRecord::Base.transaction do
+  user.save!
+  user.account.create!(balance: 0)
+end
+```
+
+#### クエリの組み立てと N+1
+
+`includes` / `preload` / `eager_load` で関連をまとめて読み、ループ内で毎回 SQL が走る N+1 を抑える。このリポジトリの `ArticlesController#show` では `@article.comments.includes(:user)` のように関連読み込みを指定している。
+
+#### 生 SQL と `structure.sql`
+
+複雑な集計や DB 独自機能は `find_by_sql` や `connection.execute`、ビューに任せる、などの選択肢がある。PostgreSQL 固有の型や制約を厳密に管理したい場合は `structure.sql` モードを選ぶプロジェクトもある。
+
+#### シードとメンテナンス用タスク
+
+`db/seeds.rb` に開発用の初期データを書き、`bin/rails db:seed` で投入する。本番でのデータ移行はマイグレーションと別タスクに分ける判断が多い。
+
+```bash
+# よく使う db 系コマンドの例
+bin/rails db:create          # データベースを作成（初回など）
+bin/rails db:migrate         # 未適用マイグレーションを実行
+bin/rails db:rollback        # 直前のマイグレーションを戻す
+bin/rails db:reset           # drop → create → migrate → seed（開発で注意して使う）
+bin/rails db:schema:dump     # schema.rb を手元で再生成したいときなど
+```
+
+#### まとめ（アーキテクチャとの関係）
+
+DB は「`database.yml` で繋ぎ、`db/migrate` で形を変え、`schema.rb` で現状を共有し、`app/models` の Active Record でアプリから触る」という一本の線になる。コントローラは Strong Parameters とモデルを通じて DB に届き、ビューはモデルの属性を表示する。SQL を意識する頻度は下がるが、インデックスや制約、パフォーマンスのときは DB と向き合う必要がある。
+
