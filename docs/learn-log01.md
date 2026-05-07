@@ -1310,3 +1310,888 @@ bin/rails db:schema:dump     # schema.rb を手元で再生成したいときな
 
 DB は「`database.yml` で繋ぎ、`db/migrate` で形を変え、`schema.rb` で現状を共有し、`app/models` の Active Record でアプリから触る」という一本の線になる。コントローラは Strong Parameters とモデルを通じて DB に届き、ビューはモデルの属性を表示する。SQL を意識する頻度は下がるが、インデックスや制約、パフォーマンスのときは DB と向き合う必要がある。
 
+## PostgreSQLデータベースについて
+
+このプロジェクトでは PostgreSQL を使う前提なので、ここでは PostgreSQL を中心に整理する。Rails 側からの触り方は前章の「Railsでのデータベースの扱い方」と重なる部分があるので、本章では「PostgreSQL という製品」としての特徴と基本操作を押さえる。
+
+### PostgreSQLの特徴
+
+PostgreSQL（よく Postgres と略す）は、長い歴史を持つオープンソースのリレーショナルデータベース管理システム（RDBMS）である。ライセンスは PostgreSQL License で、商用・個人を問わず広く使われている。Rails の Active Record とも組み合わせやすく、デプロイ先（クラウドのマネージド、コンテナ、自前サーバー）の選択肢も多い。
+
+#### リレーショナル + 拡張性のある設計
+
+正規化されたテーブルと SQL を中心に据えつつ、独自型・関数・演算子・インデックスを後から拡張する余地が多い。`CREATE EXTENSION pgcrypto` のように拡張機能（`pg_trgm`、`uuid-ossp`、PostGIS など）を有効化して機能を足す文化がある。
+
+#### ACID と MVCC
+
+トランザクションは ACID 特性（原子性・一貫性・独立性・永続性）を満たすことが前提で、複数の読み書きを安全にまとめられる。並行制御には MVCC（多版同時実行制御）を採用しており、読み取りと書き込みが互いをほぼブロックしない。
+
+#### 豊富なデータ型
+
+`integer` / `text` / `boolean` / `timestamp` といった基本型に加え、`json` / `jsonb`、配列型、`uuid`、`numeric`（任意精度）、範囲型（`int4range` 等）など、業務でよく使う型が標準で揃っている。`jsonb` は中身にインデックスも張れる。
+
+#### 強い SQL 表現力
+
+ウィンドウ関数、CTE（`WITH` 句）、再帰クエリ、`UPSERT`（`INSERT ... ON CONFLICT`）、`RETURNING` 節など、複雑な集計や更新を SQL で簡潔に書ける。
+
+#### 整合性とインデックス
+
+外部キー、`CHECK` 制約、ユニーク制約、部分インデックス、式インデックスなど、データ品質を DB 側で守るための仕組みが整う。トリガでイベント駆動の処理も書けるが、過度な利用は読みづらくなる。
+
+#### 運用周辺
+
+論理／物理レプリケーション、ストリーミングレプリケーション、`pg_dump` / `pg_restore` でのバックアップ、Point-In-Time Recovery、`EXPLAIN` / `EXPLAIN ANALYZE` でのプラン確認など、運用の手段が用意されている。マネージド（Amazon RDS / Aurora、Google Cloud SQL、Azure、Supabase など）を選べば運用負担を下げやすい。
+
+#### Rails との相性
+
+Rails のデフォルト想定の DB のひとつであり、`postgresql` アダプタ・ジェネレータ・マイグレーション DSL が `jsonb`、配列型、UUID などを表現できる。本リポジトリでも `config/database.yml` の `adapter: postgresql` を起点に Active Record が接続する。
+
+### PostgreSQLの得意なこと、不得意なこと
+
+製品としての適性も、用途とのマッチングで考えると整理しやすい。
+
+#### 得意なこと
+
+- 正規化された業務データ（記事・コメント・ユーザーのような関連が多いドメイン）の保存と整合性確保。
+- 複雑な集計・分析クエリ（CTE・ウィンドウ関数・JOIN を多用するレポート系）。
+- 半構造化データの併用（`jsonb` で柔軟なスキーマを部分的に許容しつつ、リレーショナルの強みも残す）。
+- 全文検索や類似検索の入口（`pg_trgm`、組み込みの全文検索、PostGIS による地理情報など）。
+- 一貫性が重要なシステム（金額計算、在庫、予約のような「途中状態を許せない」ドメイン）。
+- 中〜大規模なオンラインサービスのプライマリ DB（適切な設計とインデックスがあれば十分にスケールする）。
+
+#### 不得意なこと（向きにくい場面）
+
+- 1 ノードで秒間百万単位の小さな書き込みを延々と捌く、KVS 的なワークロード（Redis や専用ストレージのほうが素直）。
+- 検索エンジン専用機能（複雑なスコアリング・分散検索）を重く使う場面（Elasticsearch / OpenSearch を併用するのが現実的）。
+- グラフ探索の深い再帰や巨大グラフの処理（グラフ DB の専用機能を使うほうがよい場合がある）。
+- スキーマレスでドキュメント単位のスケールアウトが第一目的の場合（MongoDB などのドキュメント DB が選ばれることもある）。
+- 単一ノード前提のままで「何もしなくても無限スケール」する用途（読み取りはレプリカ、書き込みはシャーディングや分割など追加設計が必要）。
+
+PostgreSQL は「まず PostgreSQL に置いて、ボトルネックが見えたら他を足す」スタートが取りやすい DB と言える。
+
+### PostgreSQLの基本的な機能や使い方、コマンド
+
+ここでは Rails から離れ、SQL と CLI の最小ラインをまとめる。Rails の `bin/rails db:*` コマンドは内部でこれらを呼んでいるイメージで読むと位置関係が分かりやすい。
+
+#### CLI（`psql`）の起動と終了
+
+`psql` は PostgreSQL の対話シェル。データベースに接続して SQL を打てる。
+
+```bash
+# データベース myapp_development に接続（ユーザー postgres）
+psql -U postgres -d myapp_development
+
+# よく使うメタコマンド（psql 内で実行）
+# \l        データベース一覧
+# \c <db>   データベースを切り替え
+# \dt       テーブル一覧
+# \d <tbl>  テーブル定義（カラム・インデックス等）
+# \du       ユーザー（ロール）一覧
+# \q        psql 終了
+```
+
+接続情報は環境変数（`PGHOST` / `PGUSER` / `PGPASSWORD` / `PGDATABASE`）でも渡せる。Rails は `config/database.yml` 経由で同等の情報を持っている。
+
+#### データベースとロールの作成
+
+```sql
+-- データベース作成（CLI から）
+CREATE DATABASE myapp_development;
+
+-- ロール（ユーザー）作成
+CREATE ROLE app LOGIN PASSWORD 'secret';
+
+-- データベースの所有権付与
+ALTER DATABASE myapp_development OWNER TO app;
+```
+
+開発環境では `createdb`（CLI）と `createuser`（CLI）でも同じことができる。
+
+#### テーブル作成と基本制約
+
+```sql
+CREATE TABLE articles (
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     BIGINT NOT NULL REFERENCES users(id),
+  title       TEXT   NOT NULL,
+  body        TEXT   NOT NULL,
+  created_at  TIMESTAMP NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMP NOT NULL DEFAULT now()
+);
+
+CREATE INDEX index_articles_on_user_id ON articles (user_id);
+```
+
+実プロジェクトでは Rails のマイグレーションがこの DDL を生成・適用する。SQL を直接書く場面は限定的だが、`schema.rb` を読むときの土台になる。
+
+#### よく使う SQL（CRUD と JOIN）
+
+```sql
+-- 取得（JOIN とソート）
+SELECT a.id, a.title, u.email
+FROM   articles a
+JOIN   users u ON u.id = a.user_id
+WHERE  a.created_at >= now() - interval '7 days'
+ORDER  BY a.created_at DESC
+LIMIT  20;
+
+-- 追加
+INSERT INTO articles (user_id, title, body)
+VALUES (1, 'Hello', 'First post')
+RETURNING id;
+
+-- 更新
+UPDATE articles SET title = 'Updated' WHERE id = 1;
+
+-- 削除
+DELETE FROM articles WHERE id = 1;
+```
+
+#### トランザクション
+
+```sql
+BEGIN;
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;
+UPDATE accounts SET balance = balance + 100 WHERE id = 2;
+COMMIT;
+-- 失敗時は ROLLBACK; で取り消す
+```
+
+Rails 側からは `ActiveRecord::Base.transaction` ブロックで同等の制御ができる。
+
+#### インデックスとプラン確認
+
+```sql
+-- 部分インデックスや式インデックスも作れる
+CREATE INDEX index_articles_published ON articles (created_at)
+WHERE  created_at >= now() - interval '90 days';
+
+-- 実行プランの確認（実行はせず推定だけ）
+EXPLAIN SELECT * FROM articles WHERE user_id = 1;
+
+-- 実行と統計の取得
+EXPLAIN ANALYZE SELECT * FROM articles WHERE user_id = 1;
+```
+
+`Seq Scan`（全件走査）が出ている時は WHERE / JOIN 列にインデックスがあるか、データ分布が適切かを疑う。
+
+#### バックアップとリストア
+
+```bash
+# 単一データベースのダンプ（テキスト形式）
+pg_dump -U postgres -d myapp_development -f dump.sql
+
+# カスタム形式（並列リストア可）
+pg_dump -U postgres -d myapp_development -F c -f dump.dump
+
+# リストア
+psql -U postgres -d myapp_development -f dump.sql
+# または
+pg_restore -U postgres -d myapp_development dump.dump
+```
+
+#### 拡張機能（必要になったとき）
+
+```sql
+-- UUID 生成、暗号関連、類似検索などはこのパターンで足す
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+```
+
+Rails のマイグレーションでも `enable_extension "pgcrypto"` のように記述できる。
+
+#### ロール・権限の最低限
+
+本番では「アプリ用ロールはアプリのスキーマだけに権限を持つ」「マイグレーション用ロールは DDL を打てる」など分ける運用が多い。`GRANT` / `REVOKE` で細かく付け外しする。
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON articles TO app;
+```
+
+#### Rails と PostgreSQL のつなぎを一言で
+
+Rails は `config/database.yml` の設定で `psql` 相当の接続を張り、`db:migrate` がマイグレーション用 DDL を実行し、Active Record が `SELECT` / `INSERT` / `UPDATE` / `DELETE` を組み立てて発行する。`bin/rails dbconsole` で直接 `psql` が開くため、SQL レベルで挙動を確かめたいときに有用である。
+
+## このプロジェクトのコード解説
+
+ここまでで Ruby・Rails・PostgreSQL の輪郭が揃ったので、最後にこのリポジトリのファイルを「ルーティング → モデル → コントローラ → ビュー → スタイル → テスト」の順で読み解く。アーキテクチャ上の役割と、Ruby の文法的なポイントもあわせて触れる。
+
+### ルーティング: `config/routes.rb`
+
+URL 空間の設計図。Devise のルートと、`articles` をネストした `comments` を宣言している。
+
+```ruby 1:19:config/routes.rb
+Rails.application.routes.draw do
+  devise_for :users
+  # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
+
+  # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
+  # Can be used by load balancers and uptime monitors to verify that the app is live.
+  get "up" => "rails/health#show", as: :rails_health_check
+
+  # Render dynamic PWA files from app/views/pwa/* (remember to link manifest in application.html.erb)
+  # get "manifest" => "rails/pwa#manifest", as: :pwa_manifest
+  # get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker
+
+  # Defines the root path route ("/")
+  root "pages#home"
+
+  resources :articles do
+    resources :comments, only: %i[create destroy]
+  end
+end
+```
+
+読みどころ。
+
+- `devise_for :users` … 認証関連のルート（サインイン、ログアウト、登録など）を一括で定義。`:users` はシンボルで「`User` モデルに対応」の意味。
+- `root "pages#home"` … `/` を `PagesController#home` に割り当てる。
+- `resources :articles` … REST 7 アクションをまとめて生成。
+- ネストした `resources :comments, only: %i[create destroy]` … `/articles/:article_id/comments` 配下に `create` と `destroy` のみを生やす。`%i[create destroy]` はシンボルの配列リテラル。
+
+文法面では「ブロック付きメソッド呼び出し（`draw do ... end`、`resources do ... end`）」が DSL の根っこになっている。
+
+### モデル: ドメインと永続化
+
+#### `Article`
+
+```ruby 1:12:app/models/article.rb
+class Article < ApplicationRecord
+  belongs_to :user
+  has_many :comments, dependent: :destroy
+
+  validates :title, :body, presence: true
+
+  def editable_by?(user)
+    return false if user.nil?
+
+    user_id == user.id
+  end
+end
+```
+
+- `belongs_to :user` / `has_many :comments` … テーブル間の関連を Active Record に宣言。`dependent: :destroy` は記事削除時に紐づくコメントも消す。
+- `validates :title, :body, presence: true` … 2 つの属性に「空でないこと」を要求。
+- `editable_by?` … 述語メソッド（命名の慣習）。引数 `user` が `nil` のときは早期 `return false`、そうでなければ「id が同じか」で真偽を返す。`user_id == user.id` の左辺は Active Record が DB カラムに対して自動生成したアクセサである。
+
+#### `Comment`
+
+```ruby 1:12:app/models/comment.rb
+class Comment < ApplicationRecord
+  belongs_to :article
+  belongs_to :user
+
+  validates :body, presence: true
+
+  def deletable_by?(user)
+    return false if user.nil?
+
+    user_id == user.id || article.user_id == user.id
+  end
+end
+```
+
+`deletable_by?` は「投稿者本人」または「記事の作者」の二択。`||` は左辺が真ならそこで決まる短絡評価。コメント投稿者と記事作者の両方が削除できる、という認可ルールを 1 行で表している。
+
+#### `User`
+
+```ruby 1:9:app/models/user.rb
+class User < ApplicationRecord
+  # Include default devise modules. Others available are:
+  # :confirmable, :lockable, :timeoutable, :trackable and :omniauthable
+  devise :database_authenticatable, :registerable,
+         :recoverable, :rememberable, :validatable
+end
+```
+
+`devise ...` は Gem が提供するクラスマクロで、シンボルで「有効化するモジュール」を列挙する書き方。`User` は記事とコメントの双方を `has_many` で持つ（モデル末尾参照）。
+
+### コントローラ: HTTP の入口
+
+#### `ApplicationController`
+
+```ruby 1:7:app/controllers/application_controller.rb
+class ApplicationController < ActionController::Base
+  # Only allow modern browsers supporting webp images, web push, badges, import maps, CSS nesting, and CSS :has.
+  allow_browser versions: :modern
+
+  # Changes to the importmap will invalidate the etag for HTML responses
+  stale_when_importmap_changes
+end
+```
+
+すべてのコントローラの親。Rails 8 のデフォルトであるブラウザ制限と etag の取り扱いがここに集約されている。
+
+#### `ArticlesController`
+
+```ruby 1:42:app/controllers/articles_controller.rb
+class ArticlesController < ApplicationController
+  before_action :authenticate_user!, except: %i[index show]
+  before_action :set_article, only: %i[show edit update destroy]
+  before_action :authorize_owner!, only: %i[edit update destroy]
+
+  def index
+    @articles = Article.order(created_at: :desc)
+  end
+
+  def show
+    @comments = @article.comments.includes(:user).order(created_at: :asc)
+  end
+
+  def new
+    @article = current_user.articles.build
+  end
+
+  def create
+    @article = current_user.articles.build(article_params)
+
+    if @article.save
+      redirect_to @article, notice: "Article was successfully created."
+    else
+      render :new, status: :unprocessable_entity
+    end
+  end
+
+  def edit
+  end
+
+  def update
+    if @article.update(article_params)
+      redirect_to @article, notice: "Article was successfully updated."
+    else
+      render :edit, status: :unprocessable_entity
+    end
+  end
+
+  def destroy
+    @article.destroy
+    redirect_to articles_url, notice: "Article was successfully destroyed."
+  end
+
+  private
+```
+
+- `before_action ..., except: %i[index show]` … 「閲覧系を除き」ログイン必須。`%i[...]` でシンボル配列を作っている。
+- `set_article` で `@article` を共通で取得し、`authorize_owner!` で「自分の記事か」をチェック。3 段階のフィルタが「認証 → 取得 → 認可」の順に並ぶ。
+- `index` の `Article.order(created_at: :desc)` は SQL の `ORDER BY ... DESC` を組み立てる。
+- `show` の `@article.comments.includes(:user)` は N+1 を避けるためのプリロード。
+- `new` の `current_user.articles.build` は「`current_user` の `articles` コレクションに、未保存のインスタンスを 1 件作る」。`user_id` が自動でセットされる。
+- `create` / `update` は「成功 → リダイレクト + フラッシュ」「失敗 → 同じテンプレートを 422 で再表示」というパターン。
+
+```ruby 44:59:app/controllers/articles_controller.rb
+  private
+
+  def set_article
+    @article = Article.find(params[:id])
+  end
+
+  def authorize_owner!
+    return if @article.editable_by?(current_user)
+
+    redirect_to articles_path, alert: "You are not allowed to modify this article."
+  end
+
+  def article_params
+    params.require(:article).permit(:title, :body)
+  end
+end
+```
+
+`article_params` は Strong Parameters の定番形。フォーム由来の `params[:article]` から `:title` と `:body` だけを許す。`authorize_owner!` の `return if ...` は早期リターンの慣用句。
+`params` は Action Controller が用意したインスタンスメソッド。`ApplicationController` を経由してすべてのコントローラで使える。
+中身は `ActionController::Parameters` というハッシュに近いオブジェクトで、Strong Parameters のメソッド（`require` / `permit` など）を持つ。
+
+#### `CommentsController`
+
+```ruby 1:37:app/controllers/comments_controller.rb
+class CommentsController < ApplicationController
+  before_action :authenticate_user!
+  before_action :set_article
+
+  def create
+    @comment = @article.comments.build(comment_params)
+    @comment.user = current_user
+
+    if @comment.save
+      redirect_to @article, notice: "Comment was successfully added."
+    else
+      redirect_to @article, alert: @comment.errors.full_messages.to_sentence
+    end
+  end
+
+  def destroy
+    @comment = @article.comments.find(params[:id])
+
+    unless @comment.deletable_by?(current_user)
+      redirect_to @article, alert: "You are not allowed to delete this comment."
+      return
+    end
+
+    @comment.destroy
+    redirect_to @article, notice: "Comment was successfully deleted."
+  end
+
+  private
+
+  def set_article
+    @article = Article.find(params[:article_id])
+  end
+
+  def comment_params
+    params.require(:comment).permit(:body)
+  end
+end
+```
+
+ネストルートのため `set_article` で `params[:article_id]` を使う点が `ArticlesController` と異なる。`@article.comments.find(params[:id])` は「その記事に属するコメント」だけを対象にするため、別記事のコメント id を渡されても `RecordNotFound` で守られる。`unless ... return` で「権限がなければ早期離脱」という形を取っている。
+
+### ビュー: ERB と Hotwire 寄りの記法
+
+#### レイアウト `application.html.erb`
+
+```html 1:54:app/views/layouts/application.html.erb
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title><%= content_for(:title) || "Ruby Blog" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Ruby Blog">
+    <meta name="mobile-web-app-capable" content="yes">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <%= yield :head %>
+
+    <%# Enable PWA manifest for installable apps (make sure to enable in config/routes.rb too!) %>
+    <%#= tag.link rel: "manifest", href: pwa_manifest_path(format: :json) %>
+
+    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.png">
+
+    <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+
+  <body>
+    <header class="top-nav">
+      <div class="top-nav__inner">
+        <%= link_to "Ruby Blog", root_path, class: "brand" %>
+        <nav class="top-nav__links" aria-label="Primary">
+          <%= link_to "Articles", articles_path, class: "nav-link" %>
+          <% if user_signed_in? %>
+            <%= button_to "Log out", destroy_user_session_path, method: :delete, class: "btn btn--ghost btn--small" %>
+          <% else %>
+            <%= link_to "Sign up", new_user_registration_path, class: "nav-link" %>
+            <%= link_to "Sign in", new_user_session_path, class: "nav-link" %>
+          <% end %>
+        </nav>
+      </div>
+    </header>
+
+    <main class="shell">
+      <div class="flash-stack">
+        <% if notice.present? %>
+          <div class="flash flash--notice" role="status"><%= notice %></div>
+        <% end %>
+        <% if alert.present? %>
+          <div class="flash flash--alert" role="alert"><%= alert %></div>
+        <% end %>
+      </div>
+
+      <%= yield %>
+    </main>
+  </body>
+</html>
+```
+
+- `content_for(:title) || "Ruby Blog"` … 各テンプレートが `content_for :title, "..."` で積んだ文字列をタイトルにし、未設定ならデフォルト。
+- `csrf_meta_tags` / `csp_meta_tag` … セキュリティ用の meta タグ。CSRF トークンの埋め込みは Rails のデフォルト保護の一部。
+- `stylesheet_link_tag` / `javascript_importmap_tags` … 資産配信のヘルパ。`data-turbo-track` は Turbo がアセット差し替えを検出するためのフック。
+- `user_signed_in?` … Devise 由来のヘルパ。ナビでサインイン状態に応じた表示を分岐。
+- `notice` / `alert` … フラッシュ。`redirect_to ..., notice: ...` の対になる。
+- `<%= yield %>` … 各アクションのテンプレート本体がここに差し込まれる。
+
+#### 一覧 `articles/index.html.erb`
+
+```html 1:23:app/views/articles/index.html.erb
+<% content_for :title, "Articles — Ruby Blog" %>
+
+<h1 class="page-title">Articles</h1>
+
+<% if user_signed_in? %>
+  <p class="toolbar">
+    <%= link_to "New article", new_article_path, class: "btn btn--primary btn--small" %>
+  </p>
+<% end %>
+
+<% if @articles.any? %>
+  <ul class="article-card-list">
+    <% @articles.each do |article| %>
+      <li>
+        <%= link_to article_path(article), class: "article-card" do %>
+          <h2 class="article-card__title"><%= article.title %></h2>
+        <% end %>
+      </li>
+    <% end %>
+  </ul>
+<% else %>
+  <div class="empty-state">No articles yet.</div>
+<% end %>
+```
+
+`link_to` にブロックを渡すと、`<a>` タグの中身を自由な HTML にできる。`@articles.each do |article| ... end` は Ruby のブロックそのもので、ループ内で各要素にアクセスする。
+
+#### 記事詳細 `articles/show.html.erb`
+
+```html 1:48:app/views/articles/show.html.erb
+<% content_for :title, "#{@article.title} — Ruby Blog" %>
+
+<p class="back-row"><%= link_to "← Back to articles", articles_path, class: "link-muted" %></p>
+
+<article class="panel glass">
+  <h1 class="page-title"><%= @article.title %></h1>
+  <div class="article-body">
+    <%= simple_format(@article.body) %>
+  </div>
+
+  <% if @article.editable_by?(current_user) %>
+    <div class="toolbar">
+      <%= link_to "Edit article", edit_article_path(@article), class: "btn btn--ghost btn--small" %>
+      <%= button_to "Delete article", article_path(@article), method: :delete, class: "btn btn--danger btn--small", form: { data: { turbo_confirm: "Are you sure?" } } %>
+    </div>
+  <% end %>
+</article>
+
+<section aria-labelledby="comments-heading">
+  <h2 id="comments-heading" class="section-title">Comments</h2>
+
+  <% @comments.each do |comment| %>
+    <div class="comment-card">
+      <div class="article-body"><%= simple_format(comment.body) %></div>
+      <p class="meta"><%= comment.user.email %> · <%= l(comment.created_at, format: :short) %></p>
+      <% if comment.deletable_by?(current_user) %>
+        <%= button_to "Delete comment", article_comment_path(@article, comment), method: :delete, class: "btn btn--danger btn--small", form: { data: { turbo_confirm: "Delete this comment?" } } %>
+      <% end %>
+    </div>
+  <% end %>
+
+  <% if user_signed_in? %>
+    <h3 class="subsection-title">Add a comment</h3>
+    <div class="panel panel--tight glass">
+      <%= form_with model: [@article, Comment.new], local: true do |form| %>
+        <div class="field">
+          <%= form.label :body, "Comment" %>
+          <%= form.text_area :body, rows: 5 %>
+        </div>
+        <div>
+          <%= form.submit "Post comment", class: "btn btn--primary" %>
+        </div>
+      <% end %>
+    </div>
+  <% else %>
+    <p class="meta"><%= link_to "Sign in", new_user_session_path %> to comment.</p>
+  <% end %>
+</section>
+```
+
+- `simple_format(...)` … 改行を `<p>` に変換しつつ HTML エスケープしてくれる、本文表示向きヘルパ。
+- `editable_by?` / `deletable_by?` … モデルの述語メソッドをそのまま画面の出し分けに使う。コントローラと同じルールがビュー側でも一貫する。
+- `button_to "...", ..., method: :delete, form: { data: { turbo_confirm: "..." } }` … 削除用フォーム + Turbo の確認ダイアログ。ハッシュをネストして `data-turbo-confirm` 属性を生成する。
+- `form_with model: [@article, Comment.new]` … ネストしたリソースから URL（`/articles/:id/comments`）と HTTP メソッド（`POST`）を推測する。`Comment.new` は未保存の新規インスタンスで、フォームの「対象」になる。
+- `l(comment.created_at, format: :short)` … I18n の日時整形ヘルパ。
+
+- `article_comment_path` は ルーティング DSL の結果として Rails が生成するメソッド。
+- 定義の元は `config/routes.rb`。名前の一覧は `bin/rails routes` で確認するのが確実。
+
+#### パーシャル `articles/_form.html.erb`
+
+```html 1:26:app/views/articles/_form.html.erb
+<% if article.errors.any? %>
+  <div class="field-error-box" role="alert">
+    <h2><%= pluralize(article.errors.count, "error") %> prevented this article from being saved:</h2>
+    <ul>
+      <% article.errors.full_messages.each do |message| %>
+        <li><%= message %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+
+<%= form_with model: article do |form| %>
+  <div class="field">
+    <%= form.label :title %>
+    <%= form.text_field :title %>
+  </div>
+
+  <div class="field">
+    <%= form.label :body %>
+    <%= form.text_area :body, rows: 12 %>
+  </div>
+
+  <div>
+    <%= form.submit class: "btn btn--primary" %>
+  </div>
+<% end %>
+```
+
+`new` と `edit` の両方から `render "form", locals: { article: @article }` の形で再利用する想定。`form_with model: article` は新規／更新の URL とメソッドをモデルの状態から決める。`pluralize(n, "error")` は単複処理を任せる便利ヘルパ。
+
+### スタイル: `app/assets/stylesheets/application.css`
+
+`:root` に CSS 変数（色・余白・角丸・影・フォント）を集中させ、コンポーネントのクラス（`.glass`、`.btn`、`.shell` など）から `var(--...)` で参照する設計。命名は BEM に近い（`btn--primary` のように修飾子を `--` でつなぐ）。
+
+```css 5:48:app/assets/stylesheets/application.css
+:root {
+  color-scheme: light;
+
+  --bg-0: #faf7f2;
+  --bg-1: #f3ebe2;
+  --bg-gradient: linear-gradient(165deg, var(--bg-0) 0%, var(--bg-1) 55%, #ebe4db 100%);
+
+  --surface: rgba(255, 255, 255, 0.68);
+  --surface-strong: rgba(255, 255, 255, 0.82);
+  --surface-border: rgba(255, 255, 255, 0.75);
+  --stroke: rgba(45, 41, 37, 0.1);
+
+  --text: #2a2522;
+  --text-muted: #6f6761;
+
+  --accent: #b8622a;
+  --accent-hover: #9e5222;
+  --accent-soft: rgba(184, 98, 42, 0.14);
+  --accent-ring: rgba(184, 98, 42, 0.35);
+
+  --danger: #b33a3a;
+  --danger-soft: rgba(179, 58, 58, 0.1);
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 18px;
+
+  --shadow-sm: 0 1px 2px rgba(42, 37, 34, 0.06), 0 8px 24px rgba(42, 37, 34, 0.06);
+  --shadow-md: 0 4px 12px rgba(42, 37, 34, 0.08), 0 18px 40px rgba(42, 37, 34, 0.07);
+
+  --blur-glass: 14px;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --space-1: 0.35rem;
+  --space-2: 0.55rem;
+  --space-3: 0.9rem;
+  --space-4: 1.35rem;
+  --space-5: 2rem;
+  --space-6: 2.75rem;
+
+  --content-width: 42rem;
+  --wide-width: min(72rem, calc(100vw - 2rem));
+}
+```
+
+```css 60:69:app/assets/stylesheets/application.css
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.65;
+  color: var(--text);
+  background: var(--bg-gradient);
+  background-attachment: fixed;
+}
+```
+
+`body` は背景・フォント・配色を変数経由で決める。`.shell` で本文幅を `min()` を使って画面に応じて狭めるなど、レスポンシブの基礎が `:root` のトークンに集まっている。
+
+#### コンポーネント用クラスの例（レイアウト・パネル・ボタン）
+
+ビューでは `class="panel glass"` のように複数クラスを並べ、ブロック（`.panel`）と修飾子（`.panel--tight`）や見た目用（`.glass`）を組み合わせる。次はその定義の抜粋である。
+
+```css 87:104:app/assets/stylesheets/application.css
+.shell {
+  width: min(var(--content-width), calc(100vw - 2rem));
+  margin-inline: auto;
+  padding-block: var(--space-5);
+}
+
+.shell--wide {
+  width: var(--wide-width);
+}
+
+.glass {
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(var(--blur-glass));
+  -webkit-backdrop-filter: blur(var(--blur-glass));
+}
+```
+
+`.shell` は本文カラムの幅と余白。`.glass` は半透明面とぼかしで「ガラス風」のカード見た目を与える。
+
+```css 203:210:app/assets/stylesheets/application.css
+.panel {
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.panel--tight {
+  padding: var(--space-4);
+}
+```
+
+`.panel` は余白の箱。`--tight` は修飾子でパディングだけ詰める（BEM 風の `--` 連結）。
+
+```css 348:404:app/assets/stylesheets/application.css
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: linear-gradient(180deg, #c9753b 0%, var(--accent) 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(184, 98, 42, 0.35);
+}
+
+.btn--primary:hover {
+  background: linear-gradient(180deg, #d48248 0%, var(--accent-hover) 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(184, 98, 42, 0.35);
+}
+
+.btn--ghost {
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(42, 37, 34, 0.12);
+  color: var(--text);
+}
+
+.btn--ghost:hover {
+  background: var(--accent-soft);
+  border-color: rgba(184, 98, 42, 0.25);
+}
+
+.btn--danger {
+  background: rgba(179, 58, 58, 0.08);
+  border-color: rgba(179, 58, 58, 0.35);
+  color: #7a2828;
+}
+
+.btn--danger:hover {
+  background: rgba(179, 58, 58, 0.14);
+}
+
+.btn--small {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.88rem;
+}
+```
+
+`.btn` が共通のボタン枠で、`--primary` / `--ghost` / `--danger` が配色とホバー、`--small` がサイズを変える。ビューでは `class="btn btn--primary btn--small"` のように複数修飾子を重ねる。
+
+### テスト: `spec/requests/comments_spec.rb`
+
+リクエストスペックは「実 URL に HTTP を投げ、ステータス・リダイレクト先・DB の差分を見る」層のテスト。Devise の `sign_in` ヘルパで、`authenticate_user!` を満たす擬似ログインを作る。
+
+```ruby 22:42:spec/requests/comments_spec.rb
+  describe "POST /articles/:article_id/comments" do
+    it "redirects guests to sign in" do
+      post article_comments_path(article), params: { comment: { body: "Nice" } }
+
+      expect(response).to redirect_to(new_user_session_path)
+    end
+
+    it "creates a comment when signed in" do
+      sign_in commenter
+
+      expect do
+        post article_comments_path(article), params: { comment: { body: "Nice post" } }
+      end.to change(Comment, :count).by(1)
+
+      expect(response).to redirect_to(article_path(article))
+      comment = Comment.last
+      expect(comment.user_id).to eq(commenter.id)
+      expect(comment.article_id).to eq(article.id)
+      expect(comment.body).to eq("Nice post")
+    end
+  end
+```
+
+```ruby 44:81:spec/requests/comments_spec.rb
+  describe "DELETE /articles/:article_id/comments/:id" do
+    let!(:comment) do
+      Comment.create!(article: article, user: commenter, body: "Hello")
+    end
+
+    it "does not allow a stranger to delete" do
+      stranger = User.create!(
+        email: "stranger-#{SecureRandom.hex(4)}@example.com",
+        password: "password123",
+        password_confirmation: "password123"
+      )
+      sign_in stranger
+
+      expect do
+        delete article_comment_path(article, comment)
+      end.not_to change(Comment, :count)
+
+      expect(response).to redirect_to(article_path(article))
+    end
+
+    it "allows the commenter to delete" do
+      sign_in commenter
+
+      expect do
+        delete article_comment_path(article, comment)
+      end.to change(Comment, :count).by(-1)
+
+      expect(response).to redirect_to(article_path(article))
+    end
+
+    it "allows the article author to delete" do
+      sign_in author
+```
+
+テスト自体も Ruby のブロック文化に乗っている。`describe`／`it` はブロックを取る DSL、`expect do ... end.to change(Comment, :count).by(1)` は「ブロックの実行前後で `Comment.count` が +1 になる」ことを検証するマッチャ。`let` は遅延評価されるヘルパで、必要になったときに 1 度だけ作られる。
+
+#### 補足
+
+このプロジェクトの `spec/requests/comments_spec.rb` で使っているのは GUI（ブラウザ）テストではなく、HTTP レイヤの結合テストに近いものです。
+
+`type: :request` のリクエストスペックは、Rails の テスト用ハーネス がアプリ内部で HTTP リクエストを直接組み立てて、ルーティング → コントローラ → モデル → テンプレート（必要なら）まで通します。
+
+ブラウザは起動しない
+サーバプロセスは別途立てない
+JavaScript も実行されない
+画面のクリックやフォーム入力もしない
+代わりに、コード上で `post article_comments_path(...)` のように呼び、`response`（HTTP レスポンス）と DB の状態を検証します。`spec/requests/comments_spec.rb` でやっているのもこの形です。
+
+つまり「処理の結合テスト相当」が近い表現で、より厳密に言うと 「Rack ミドルウェア + ルーティング + コントローラ + モデル を通した、HTTP の入口から出口までの結合テスト」 です。
+
+### 全体のつなぎ（アーキテクチャとの対応）
+
+- ルーティング … `config/routes.rb` で「Articles を中心にコメントをぶら下げる」という URL 設計を 1 ファイルで読み切れる。
+- ドメインと永続化 … `Article`・`Comment`・`User` がそれぞれの関連と認可ロジックを担う。`editable_by?` / `deletable_by?` がコントローラとビューで一貫して使われ、ロジックがモデル側に寄っている。
+- HTTP の入口 … `ArticlesController` と `CommentsController` が「認証 → 取得 → 認可 → 実処理」の順でフィルタを並べ、Strong Parameters と `redirect_to` / `render :status` のお決まりの形で応答を組む。
+- プレゼンテーション … レイアウトとアクションテンプレート、パーシャルが ERB で重なり、`form_with` や `button_to` で HTML フォームを宣言的に組み立てる。
+- スタイル … `:root` のトークンを起点に、再利用しやすい命名でコンポーネント単位に書く構成。
+- テスト … リクエストスペックが「URL → 認可 → DB 影響 → リダイレクト」を一気通貫に検証し、回帰防止に厚めの層を用意している。
+
+これらは全て、これまでの章で見てきた Ruby・Rails・PostgreSQL の概念の組み合わせで構成されている。コードを読んでいて迷ったら、対応する概念の章に戻ると、書き方の意味がつなぎ直しやすい。
